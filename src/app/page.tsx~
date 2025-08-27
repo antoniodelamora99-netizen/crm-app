@@ -1,0 +1,909 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { BarChart3, Users, ClipboardList, Target, CalendarDays, Stethoscope, FileText, Plus, ListChecks } from "lucide-react";
+import PoliciesPage from "@/app/(shell)/policies/page";
+
+// ============================================================
+// Types & Models
+// ============================================================
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+export type Client = {
+  id: string;
+  nombre: string;
+  apellidoPaterno?: string;
+  apellidoMaterno?: string;
+  telefono?: string;
+  email?: string;
+  fechaNacimiento?: string; // ISO date
+  sexo?: "Masculino" | "Femenino" | "Otro";
+  estadoCivil?: "Soltero(a)" | "Casado(a)" | "Unión libre" | "Divorciado(a)" | "Viudo(a)";
+  estadoResidencia?: string;
+  ocupacion?: string;
+  empresa?: string;
+  ingresoHogar?: number;
+  dependientes?: number;
+  fumador?: boolean;
+  fuente?: "Mercado natural" | "Referido" | "Redes" | "Frío" | "Evento" | "COI" | "Otros";
+  necesidades?: string[];
+  estatus?: "Prospecto" | "Cliente" | "Inactivo" | "Referido";
+  referidoPorId?: string | null;
+  asesor?: string;
+  ultimoContacto?: string; // ISO date
+};
+
+export type Policy = {
+  id: string;
+  clienteId: string;
+  plan: string;
+  numeroPoliza?: string;
+  estado: "Vigente" | "Propuesta" | "Rechazada" | "En proceso";
+  sumaAsegurada?: number;
+  primaMensual?: number;
+  fechaIngreso?: string;
+  fechaExamenMedico?: string;
+  formaPago?: string;
+  fechaPago?: string;
+  fechaEntrega?: string;
+  comisionEstimada?: number;
+  participa?: { mdrt?: boolean; convencion?: boolean; reconocimiento?: boolean };
+  necesidadesFuturas?: string;
+  proximoSeguimiento?: string;
+  pdfUrl?: string;
+};
+
+export type Activity = {
+  id: string;
+  tipo: "Llamada" | "Cita Inicial" | "Cita Cierre" | "Entrega" | "Seguimiento";
+  clienteId: string;
+  fechaHora: string; // ISO
+  lugar?: string;
+  notas?: string;
+  realizada?: boolean;
+  generoCierre?: boolean;
+  obtuvoReferidos?: boolean;
+  reagendada?: boolean;
+};
+
+export type Goal = {
+  id: string;
+  tipo: "Ingreso mensual" | "Pólizas mensuales" | "Citas semanales" | "Referidos";
+  mes: string; // YYYY-MM
+  metaMensual?: number;
+  metaAnual?: number;
+};
+
+export type MedicalForm = {
+  id: string;
+  clienteId: string;
+  fecha: string; // YYYY-MM-DD
+  enfermedades?: string;
+  hospitalizacion?: string;
+  medicamentos?: string;
+  cirugias?: string;
+  antecedentes?: string;
+  otros?: string;
+  pdfUrl?: string;
+};
+
+// ============================================================
+// Local Storage Repo (reemplazable por Supabase/Firebase)
+// ============================================================
+const LS_KEYS = {
+  clients: "crm_clients",
+  policies: "crm_policies",
+  activities: "crm_activities",
+  goals: "crm_goals",
+  medical: "crm_medical",
+};
+
+type Repo<T> = {
+  list: () => T[];
+  saveAll: (rows: T[]) => void;
+};
+function repo<T>(key: string): Repo<T> {
+  return {
+    list: () => {
+      try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch { return []; }
+    },
+    saveAll: (rows: T[]) => localStorage.setItem(key, JSON.stringify(rows)),
+  };
+}
+
+const ClientsRepo = repo<Client>(LS_KEYS.clients);
+const PoliciesRepo = repo<Policy>(LS_KEYS.policies);
+const ActivitiesRepo = repo<Activity>(LS_KEYS.activities);
+const GoalsRepo = repo<Goal>(LS_KEYS.goals);
+const MedicalRepo = repo<MedicalForm>(LS_KEYS.medical);
+
+// ============================================================
+// Utils
+// ============================================================
+const toAge = (iso?: string) => {
+  if (!iso) return undefined;
+  const d = new Date(iso);
+  const diff = new Date(Date.now() - d.getTime());
+  return Math.abs(diff.getUTCFullYear() - 1970);
+};
+
+// Badge color helpers
+const clientStatusClass: Record<NonNullable<Client["estatus"]>, string> = {
+  Prospecto: "bg-sky-100 text-sky-800",
+  Cliente: "bg-emerald-100 text-emerald-800",
+  Inactivo: "bg-neutral-200 text-neutral-800",
+  Referido: "bg-violet-100 text-violet-800",
+};
+const policyStatusClass: Record<Policy["estado"], string> = {
+  Vigente: "bg-emerald-100 text-emerald-800",
+  Propuesta: "bg-amber-100 text-amber-800",
+  Rechazada: "bg-red-100 text-red-800",
+  "En proceso": "bg-blue-100 text-blue-800",
+};
+
+// Cascade delete util (testable)
+export function deleteClientCascade(clientId: string) {
+  const clients = ClientsRepo.list().filter(c => c.id !== clientId);
+  const policies = PoliciesRepo.list().filter(p => p.clienteId !== clientId);
+  const activities = ActivitiesRepo.list().filter(a => a.clienteId !== clientId);
+  const medical = MedicalRepo.list().filter(m => m.clienteId !== clientId);
+  ClientsRepo.saveAll(clients);
+  PoliciesRepo.saveAll(policies);
+  ActivitiesRepo.saveAll(activities);
+  MedicalRepo.saveAll(medical);
+}
+
+// ============================================================
+// App Shell
+// ============================================================
+export default function App() {
+  const [tab, setTab] = useState("dashboard");
+  return (
+    <div className="min-h-screen grid grid-cols-12 gap-4 p-4 bg-neutral-50">
+      <aside className="col-span-12 md:col-span-3 lg:col-span-2 space-y-3">
+        <Card className="shadow">
+          <CardContent className="p-4">
+            <div className="text-xl font-bold mb-2">CRM Seguros</div>
+            <div className="text-sm text-muted-foreground">MVP — local first</div>
+          </CardContent>
+        </Card>
+        <nav className="grid gap-2">
+          <NavItem icon={<BarChart3 size={18}/>} label="Dashboard" active={tab==="dashboard"} onClick={() => setTab("dashboard")}/>
+          <NavItem icon={<ListChecks size={18}/>} label="Pendientes" active={tab==="pending"} onClick={() => setTab("pending")}/>
+          <NavItem icon={<Users size={18}/>} label="Clientes" active={tab==="clients"} onClick={() => setTab("clients")}/>
+          <NavItem icon={<ClipboardList size={18}/>} label="Pólizas" active={tab==="policies"} onClick={() => setTab("policies")}/>
+          <NavItem icon={<CalendarDays size={18}/>} label="Citas / Actividades" active={tab==="activities"} onClick={() => setTab("activities")}/>
+          <NavItem icon={<Target size={18}/>} label="Metas" active={tab==="goals"} onClick={() => setTab("goals")}/>
+          <NavItem icon={<Stethoscope size={18}/>} label="Cuestionario Médico" active={tab==="medical"} onClick={() => setTab("medical")}/>
+          <NavItem icon={<FileText size={18}/>} label="Base de Conocimiento" active={tab==="kb"} onClick={() => setTab("kb")}/>
+        </nav>
+      </aside>
+
+      <main className="col-span-12 md:col-span-9 lg:col-span-10 space-y-4">
+        {tab === "dashboard" && <Dashboard/>}
+        {tab === "pending" && <PendingPage/>}
+        {tab === "clients" && <ClientsPage/>}
+        {tab === "policies" && <PoliciesPage/>}
+        {tab === "activities" && <ActivitiesPage/>}
+        {tab === "goals" && <GoalsPage/>}
+        {tab === "medical" && <MedicalPage/>}
+        {tab === "kb" && <KBPage/>}
+      </main>
+    </div>
+  );
+}
+
+function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active?: boolean; onClick?: () => void }) {
+  return (
+    <Button variant={active ? "default" : "secondary"} className="justify-start" onClick={onClick}>
+      <span className="mr-2">{icon}</span>{label}
+    </Button>
+  );
+}
+
+// ============================================================
+// Dashboard con rangos (semana/mes/3m/histórico)
+// ============================================================
+function Dashboard() {
+  const clients = ClientsRepo.list();
+  const policies = PoliciesRepo.list();
+  const activities = ActivitiesRepo.list();
+
+  const [range, setRange] = useState<"week"|"month"|"quarter"|"all">("month");
+  const rangeStart = useMemo(() => {
+    const now = new Date();
+    if (range === "week") { const d = new Date(now); d.setDate(d.getDate() - 7); return d; }
+    if (range === "quarter") { const d = new Date(now); d.setDate(d.getDate() - 90); return d; }
+    if (range === "all") return new Date(0);
+    return new Date(now.getFullYear(), now.getMonth(), 1); // month
+  }, [range]);
+
+  const inRange = (iso?: string) => iso ? new Date(iso) >= rangeStart : false;
+
+  const activitiesInRange = activities.filter(a => inRange(a.fechaHora));
+  const citasCount = activitiesInRange.length;
+  const cierres = activitiesInRange.filter(a => a.generoCierre).length;
+  const realizadas = activitiesInRange.filter(a => a.realizada).length;
+  const tasaCierre = realizadas ? Math.round((cierres / realizadas) * 100) : 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-xl font-bold">Dashboard</div>
+        <div className="flex gap-2">
+          {( ["week","month","quarter","all"] as const).map(k => (
+            <Button key={k} variant={range===k?"default":"secondary"} onClick={()=>setRange(k)}>
+              {k === "week" && "Esta semana"}
+              {k === "month" && "Este mes"}
+              {k === "quarter" && "3 meses"}
+              {k === "all" && "Histórico"}
+            </Button>
+          ))}
+        </div>
+      </div>
+      <div className="grid md:grid-cols-3 gap-4">
+        <StatCard title="Clientes" value={clients.length} subtitle="Total registrados"/>
+        <StatCard title="Pólizas" value={policies.length} subtitle="Todas las etapas"/>
+        <StatCard title="Actividades" value={citasCount} subtitle={range==="week"?"Esta semana": range==="month"?"Este mes": range==="quarter"?"Últimos 3 meses":"Histórico"}/>
+        <StatCard title="Cierres" value={cierres} subtitle="En el rango seleccionado"/>
+        <StatCard title="Tasa cierre" value={`${tasaCierre}%`} subtitle="Realizadas → cierre"/>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({title, value, subtitle}:{title:string; value: React.ReactNode; subtitle?:string}){
+  return (
+    <Card className="shadow">
+      <CardContent className="p-5">
+        <div className="text-sm text-muted-foreground">{title}</div>
+        <div className="text-3xl font-semibold mt-1">{value}</div>
+        {subtitle && <div className="text-xs text-muted-foreground mt-1">{subtitle}</div>}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================
+// Clientes (crear/editar/borrar)
+// ============================================================
+function ClientsPage(){
+  const [rows, setRows] = useState<Client[]>(ClientsRepo.list());
+  const [q, setQ] = useState("");
+  const [openNew, setOpenNew] = useState(false);
+  const [openEdit, setOpenEdit] = useState<{open:boolean, client: Client|null}>({open:false, client:null});
+  const filtered = useMemo(()=> rows.filter(r => (r.nombre+" "+(r.apellidoPaterno||"")+" "+(r.apellidoMaterno||"")).toLowerCase().includes(q.toLowerCase())), [rows,q]);
+  useEffect(()=>{ ClientsRepo.saveAll(rows); },[rows]);
+
+  const handleCreate = (c: Client) => { setRows([c, ...rows]); setOpenNew(false); };
+  const handleUpdate = (c: Client) => { setRows(prev => prev.map(x => x.id === c.id ? c : x)); setOpenEdit({open:false, client:null}); };
+  const handleDelete = (id: string) => {
+    deleteClientCascade(id);
+    setRows(ClientsRepo.list());
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xl font-semibold">Clientes</h2>
+        <div className="flex gap-2">
+          <Input placeholder="Buscar…" value={q} onChange={e=>setQ((e.target as HTMLInputElement).value)} className="w-56"/>
+          <Dialog open={openNew} onOpenChange={setOpenNew}>
+            <DialogTrigger asChild><Button><Plus className="mr-2" size={16}/>Nuevo</Button></DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader><DialogTitle>Nuevo cliente</DialogTitle></DialogHeader>
+              <ClientForm onSubmit={handleCreate}/>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+      <Card className="shadow">
+        <CardContent className="p-0 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-neutral-100 text-neutral-700">
+              <tr>
+                <th className="text-left p-3">Nombre</th>
+                <th className="text-left p-3">Teléfono</th>
+                <th className="text-left p-3">Email</th>
+                <th className="text-left p-3">Estatus</th>
+                <th className="text-left p-3">Edad</th>
+                <th className="text-left p-3">Fuente</th>
+                <th className="text-left p-3">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(c=> (
+                <tr key={c.id} className="border-t">
+                  <td className="p-3">{c.nombre} {c.apellidoPaterno} {c.apellidoMaterno}</td>
+                  <td className="p-3">{c.telefono}</td>
+                  <td className="p-3">{c.email}</td>
+                  <td className="p-3"><Badge className={clientStatusClass[(c.estatus||"Prospecto") as NonNullable<Client["estatus"]>]}>{c.estatus || "Prospecto"}</Badge></td>
+                  <td className="p-3">{toAge(c.fechaNacimiento) ?? "-"}</td>
+                  <td className="p-3">{c.fuente||"-"}</td>
+                  <td className="p-3 space-x-2">
+                    <Button variant="secondary" size="sm" onClick={()=> setOpenEdit({open:true, client:c})}>Editar</Button>
+                    <Button variant="destructive" size="sm" onClick={()=> handleDelete(c.id)}>Borrar</Button>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length===0 && (
+                <tr><td className="p-4 text-sm text-muted-foreground" colSpan={7}>Sin resultados</td></tr>
+              )}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
+      <Dialog open={openEdit.open} onOpenChange={(o)=> setOpenEdit({open:o, client: o? openEdit.client : null})}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>Editar cliente</DialogTitle></DialogHeader>
+          {openEdit.client && (<ClientForm initial={openEdit.client} onSubmit={handleUpdate} />)}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function ClientForm({ initial, onSubmit }: { initial?: Client | null; onSubmit: (c: Client) => void }) {
+  const [form, setForm] = useState<Client>(initial || { id: uid(), nombre: "", estatus: "Prospecto" });
+  useEffect(()=>{ if(initial) setForm(initial); },[initial]);
+  const set = (k: keyof Client, v:any)=> setForm(prev=> ({...prev, [k]: v }));
+  const isEdit = Boolean(initial);
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div className="col-span-2 grid grid-cols-2 gap-3">
+        <Field label="Nombre"><Input value={form.nombre} onChange={e=>set("nombre", (e.target as HTMLInputElement).value)} /></Field>
+        <Field label="Apellido paterno"><Input value={form.apellidoPaterno||""} onChange={e=>set("apellidoPaterno", (e.target as HTMLInputElement).value)} /></Field>
+        <Field label="Apellido materno"><Input value={form.apellidoMaterno||""} onChange={e=>set("apellidoMaterno", (e.target as HTMLInputElement).value)} /></Field>
+        <Field label="Teléfono"><Input value={form.telefono||""} onChange={e=>set("telefono", (e.target as HTMLInputElement).value)} /></Field>
+        <Field label="Correo electrónico"><Input value={form.email||""} onChange={e=>set("email", (e.target as HTMLInputElement).value)} /></Field>
+        <Field label="Fecha de nacimiento"><Input type="date" value={form.fechaNacimiento||""} onChange={e=>set("fechaNacimiento", (e.target as HTMLInputElement).value)} /></Field>
+        <Field label="Sexo">
+          <Select value={form.sexo} onValueChange={(v)=>set("sexo", v as any)}>
+            <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Masculino">Masculino</SelectItem>
+              <SelectItem value="Femenino">Femenino</SelectItem>
+              <SelectItem value="Otro">Otro</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Estado civil">
+          <Select value={form.estadoCivil} onValueChange={(v)=>set("estadoCivil", v as any)}>
+            <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Soltero(a)">Soltero(a)</SelectItem>
+              <SelectItem value="Casado(a)">Casado(a)</SelectItem>
+              <SelectItem value="Unión libre">Unión libre</SelectItem>
+              <SelectItem value="Divorciado(a)">Divorciado(a)</SelectItem>
+              <SelectItem value="Viudo(a)">Viudo(a)</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Estado de residencia"><Input value={form.estadoResidencia||""} onChange={e=>set("estadoResidencia", (e.target as HTMLInputElement).value)} /></Field>
+        <Field label="Ocupación"><Input value={form.ocupacion||""} onChange={e=>set("ocupacion", (e.target as HTMLInputElement).value)} /></Field>
+        <Field label="Empresa"><Input value={form.empresa||""} onChange={e=>set("empresa", (e.target as HTMLInputElement).value)} /></Field>
+        <Field label="Ingreso total del hogar (MXN)"><Input type="number" value={form.ingresoHogar||""} onChange={e=>set("ingresoHogar", Number((e.target as HTMLInputElement).value))} /></Field>
+        <Field label="Dependientes"><Input type="number" value={form.dependientes||""} onChange={e=>set("dependientes", Number((e.target as HTMLInputElement).value))} /></Field>
+        <Field label="Fumador">
+          <Select value={form.fumador?"si":"no"} onValueChange={(v)=>set("fumador", v==="si") }>
+            <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="si">Sí</SelectItem>
+              <SelectItem value="no">No</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Fuente de prospección">
+          <Select value={form.fuente} onValueChange={(v)=>set("fuente", v as any)}>
+            <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
+            <SelectContent>
+              {( ["Mercado natural","Referido","Redes","Frío","Evento","COI","Otros"]).map(s=> <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Estatus">
+          <Select value={form.estatus} onValueChange={(v)=>set("estatus", v as any)}>
+            <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
+            <SelectContent>
+              {( ["Prospecto","Cliente","Inactivo","Referido"]).map(s=> <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Último contacto"><Input type="date" value={form.ultimoContacto||""} onChange={e=>set("ultimoContacto", (e.target as HTMLInputElement).value)} /></Field>
+      </div>
+      <DialogFooter className="col-span-2 mt-2">
+        <Button onClick={()=> onSubmit(form)} className="w-full">{isEdit? 'Actualizar cliente':'Guardar cliente'}</Button>
+      </DialogFooter>
+    </div>
+  );
+}
+
+function Field({label, children}:{label:string; children:React.ReactNode}){
+  return (
+    <div className="grid gap-1">
+      <Label className="text-xs text-neutral-600">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+// ============================================================
+// Pólizas (crear/editar/borrar)
+// ============================================================
+function PoliciesPage(){
+  const [rows, setRows] = useState<Policy[]>(PoliciesRepo.list());
+  const clients = ClientsRepo.list();
+  const [openNew, setOpenNew] = useState(false);
+  const [openEdit, setOpenEdit] = useState<{open:boolean, policy: Policy|null}>({open:false, policy:null});
+  useEffect(()=>{ PoliciesRepo.saveAll(rows); },[rows]);
+
+  const handleCreate = (p: Policy) => { setRows([p, ...rows]); setOpenNew(false); };
+  const handleUpdate = (p: Policy) => { setRows(prev => prev.map(x => x.id === p.id ? p : x)); setOpenEdit({open:false, policy:null}); };
+  const handleDelete = (id: string) => { setRows(prev => prev.filter(x => x.id !== id)); };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Pólizas</h2>
+        <div className="flex gap-2">
+          <Dialog open={openNew} onOpenChange={setOpenNew}>
+            <DialogTrigger asChild><Button><Plus className="mr-2" size={16}/>Nueva</Button></DialogTrigger>
+            <DialogContent className="max-w-xl">
+              <DialogHeader><DialogTitle>Nueva póliza</DialogTitle></DialogHeader>
+              <PolicyForm clients={clients} onSubmit={handleCreate}/>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+      <Card className="shadow">
+        <CardContent className="p-0 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-neutral-100 text-neutral-700">
+              <tr>
+                <th className="text-left p-3">Cliente</th>
+                <th className="text-left p-3">Plan</th>
+                <th className="text-left p-3">Estado</th>
+                <th className="text-left p-3">Prima mensual</th>
+                <th className="text-left p-3">Suma asegurada</th>
+                <th className="text-left p-3">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r=>{
+                const c = clients.find(x=>x.id===r.clienteId);
+                return (
+                  <tr key={r.id} className="border-t">
+                    <td className="p-3">{c? `${c.nombre} ${c.apellidoPaterno||""}`: "-"}</td>
+                    <td className="p-3">{r.plan}</td>
+                    <td className="p-3"><Badge className={policyStatusClass[r.estado]}>{r.estado}</Badge></td>
+                    <td className="p-3">{r.primaMensual ? r.primaMensual.toLocaleString("es-MX", {style:"currency", currency:"MXN"}) : "-"}</td>
+                    <td className="p-3">{r.sumaAsegurada ? r.sumaAsegurada.toLocaleString("es-MX", {style:"currency", currency:"MXN"}) : "-"}</td>
+                    <td className="p-3 space-x-2">
+                      <Button variant="secondary" size="sm" onClick={()=> setOpenEdit({open:true, policy:r})}>Editar</Button>
+                      <Button variant="destructive" size="sm" onClick={()=> handleDelete(r.id)}>Borrar</Button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {rows.length===0 && (<tr><td className="p-4 text-sm text-muted-foreground" colSpan={6}>Sin pólizas aún</td></tr>)}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
+      <Dialog open={openEdit.open} onOpenChange={(o)=> setOpenEdit({open:o, policy: o? openEdit.policy : null})}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader><DialogTitle>Editar póliza</DialogTitle></DialogHeader>
+          {openEdit.policy && (<PolicyForm initial={openEdit.policy} clients={clients} onSubmit={handleUpdate} />)}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function PolicyForm({clients, onSubmit, initial}:{clients:Client[]; onSubmit:(p:Policy)=>void; initial?: Policy}){
+  const [form, setForm] = useState<Policy>(initial || { id: uid(), clienteId: clients[0]?.id || "", plan: "", estado: "Propuesta" });
+  useEffect(()=>{ if(initial) setForm(initial); },[initial]);
+  const set = (k: keyof Policy, v:any)=> setForm(prev=> ({...prev, [k]: v }));
+  const isEdit = Boolean(initial);
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <Field label="Cliente">
+        <Select value={form.clienteId} onValueChange={v=>set("clienteId", v)}>
+          <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
+          <SelectContent>
+            {clients.map(c=> <SelectItem key={c.id} value={c.id}>{c.nombre} {c.apellidoPaterno||""}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Plan"><Input value={form.plan} onChange={e=>set("plan", (e.target as HTMLInputElement).value)} /></Field>
+      <Field label="Número de póliza"><Input value={form.numeroPoliza||""} onChange={e=>set("numeroPoliza", (e.target as HTMLInputElement).value)} /></Field>
+      <Field label="Estado">
+        <Select value={form.estado} onValueChange={(v)=>set("estado", v as any)}>
+          <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
+          <SelectContent>
+            {( ["Vigente","Propuesta","Rechazada","En proceso"]).map(s=> <SelectItem key={s} value={s}>{s}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Suma asegurada (MXN)"><Input type="number" value={form.sumaAsegurada||""} onChange={e=>set("sumaAsegurada", Number((e.target as HTMLInputElement).value))} /></Field>
+      <Field label="Prima mensual (MXN)"><Input type="number" value={form.primaMensual||""} onChange={e=>set("primaMensual", Number((e.target as HTMLInputElement).value))} /></Field>
+      <Field label="Próximo seguimiento"><Input type="date" value={form.proximoSeguimiento||""} onChange={e=>set("proximoSeguimiento", (e.target as HTMLInputElement).value)} /></Field>
+      <div className="col-span-2 mt-2"><Button className="w-full" onClick={()=> onSubmit(form)}>{isEdit? 'Actualizar póliza' : 'Guardar póliza'}</Button></div>
+    </div>
+  );
+}
+
+// ============================================================
+// Actividades (crear)
+// ============================================================
+function ActivitiesPage(){
+  const [rows, setRows] = useState<Activity[]>(ActivitiesRepo.list());
+  const clients = ClientsRepo.list();
+  const [open, setOpen] = useState(false);
+  useEffect(()=>{ ActivitiesRepo.saveAll(rows); },[rows]);
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Citas / Actividades</h2>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild><Button><Plus className="mr-2" size={16}/>Nueva</Button></DialogTrigger>
+          <DialogContent className="max-w-xl">
+            <DialogHeader><DialogTitle>Nueva actividad</DialogTitle></DialogHeader>
+            <ActivityForm clients={clients} onSubmit={(a)=>{ setRows([a,...rows]); setOpen(false);} }/>
+          </DialogContent>
+        </Dialog>
+      </div>
+      <Card className="shadow">
+        <CardContent className="p-0 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-neutral-100 text-neutral-700">
+              <tr>
+                <th className="text-left p-3">Fecha</th>
+                <th className="text-left p-3">Tipo</th>
+                <th className="text-left p-3">Cliente</th>
+                <th className="text-left p-3">Realizada</th>
+                <th className="text-left p-3">Cierre</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r=>{
+                const c = clients.find(x=>x.id===r.clienteId);
+                return (
+                  <tr key={r.id} className="border-t">
+                    <td className="p-3">{new Date(r.fechaHora).toLocaleString()}</td>
+                    <td className="p-3">{r.tipo}</td>
+                    <td className="p-3">{c? `${c.nombre} ${c.apellidoPaterno||""}`: "-"}</td>
+                    <td className="p-3">{r.realizada? "Sí":"No"}</td>
+                    <td className="p-3">{r.generoCierre? "Sí":"No"}</td>
+                  </tr>
+                );
+              })}
+              {rows.length===0 && (<tr><td className="p-4 text-sm text-muted-foreground" colSpan={5}>Sin actividades</td></tr>)}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ActivityForm({clients, onSubmit}:{clients:Client[]; onSubmit:(a:Activity)=>void}){
+  const [form, setForm] = useState<Activity>({ id: uid(), clienteId: clients[0]?.id||"", tipo: "Llamada", fechaHora: new Date().toISOString(), realizada: false, generoCierre: false });
+  const set = (k: keyof Activity, v:any)=> setForm(prev=> ({...prev, [k]: v }));
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <Field label="Tipo">
+        <Select value={form.tipo} onValueChange={(v)=>set("tipo", v as any)}>
+          <SelectTrigger><SelectValue/></SelectTrigger>
+          <SelectContent>
+            {( ["Llamada","Cita Inicial","Cita Cierre","Entrega","Seguimiento"]).map(s=> <SelectItem key={s} value={s}>{s}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Cliente">
+        <Select value={form.clienteId} onValueChange={v=>set("clienteId", v)}>
+          <SelectTrigger><SelectValue/></SelectTrigger>
+          <SelectContent>
+            {clients.map(c=> <SelectItem key={c.id} value={c.id}>{c.nombre} {c.apellidoPaterno||""}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Fecha y hora"><Input type="datetime-local" value={form.fechaHora.slice(0,16)} onChange={e=>set("fechaHora", new Date((e.target as HTMLInputElement).value).toISOString())} /></Field>
+      <Field label="Lugar"><Input value={form.lugar||""} onChange={e=>set("lugar", (e.target as HTMLInputElement).value)} /></Field>
+      <Field label="Notas" ><Textarea value={form.notas||""} onChange={e=>set("notas", (e.target as HTMLInputElement).value)} /></Field>
+      <Field label="Realizada">
+        <Select value={form.realizada?"si":"no"} onValueChange={(v)=>set("realizada", v==="si")}>
+          <SelectTrigger><SelectValue/></SelectTrigger>
+          <SelectContent><SelectItem value="si">Sí</SelectItem><SelectItem value="no">No</SelectItem></SelectContent>
+        </Select>
+      </Field>
+      <Field label="¿Generó cierre?">
+        <Select value={form.generoCierre?"si":"no"} onValueChange={(v)=>set("generoCierre", v==="si")}> 
+          <SelectTrigger><SelectValue/></SelectTrigger>
+          <SelectContent><SelectItem value="si">Sí</SelectItem><SelectItem value="no">No</SelectItem></SelectContent>
+        </Select>
+      </Field>
+      <div className="col-span-2 mt-2"><Button className="w-full" onClick={()=> onSubmit(form)}>Guardar actividad</Button></div>
+    </div>
+  );
+}
+
+// ============================================================
+// Metas (proxy simple de resultado por mes)
+// ============================================================
+function GoalsPage(){
+  const [rows, setRows] = useState<Goal[]>(GoalsRepo.list());
+  const [open, setOpen] = useState(false);
+  useEffect(()=>{ GoalsRepo.saveAll(rows); },[rows]);
+
+  const resultados = useMemo(()=>{
+    const policies = PoliciesRepo.list();
+    const byMonth: Record<string, number> = {};
+    for(const p of policies){
+      if(!p.fechaIngreso || !p.primaMensual) continue;
+      const m = p.fechaIngreso.slice(0,7);
+      byMonth[m] = (byMonth[m]||0) + p.primaMensual * 0.3; // proxy 30%
+    }
+    return byMonth;
+  },[]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Metas</h2>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild><Button><Plus className="mr-2" size={16}/>Nueva</Button></DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader><DialogTitle>Nueva meta</DialogTitle></DialogHeader>
+            <GoalForm onSubmit={(g)=>{ setRows([g,...rows]); setOpen(false);} }/>
+          </DialogContent>
+        </Dialog>
+      </div>
+      <div className="grid md:grid-cols-2 gap-3">
+        {rows.map(g=> (
+          <Card key={g.id} className="shadow">
+            <CardContent className="p-5">
+              <div className="text-sm text-muted-foreground">{g.tipo}</div>
+              <div className="text-xl font-semibold">{g.mes}</div>
+              <div className="mt-1">Meta mensual: <b>{g.metaMensual ?? "-"}</b></div>
+              <div className="text-sm text-muted-foreground mt-2">Resultado (proxy) {g.tipo === "Ingreso mensual" ? (resultados[g.mes]?.toLocaleString("es-MX",{style:"currency",currency:"MXN"})||"$0") : "—"}</div>
+            </CardContent>
+          </Card>
+        ))}
+        {rows.length===0 && <div className="text-sm text-muted-foreground">Aún no has definido metas.</div>}
+      </div>
+    </div>
+  );
+}
+
+function GoalForm({onSubmit}:{onSubmit:(g:Goal)=>void}){
+  const [form, setForm] = useState<Goal>({ id: uid(), tipo: "Ingreso mensual", mes: new Date().toISOString().slice(0,7), metaMensual: 100000 });
+  const set = (k: keyof Goal, v:any)=> setForm(prev=> ({...prev, [k]: v }));
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <Field label="Tipo">
+        <Select value={form.tipo} onValueChange={(v)=>set("tipo", v as any)}>
+          <SelectTrigger><SelectValue/></SelectTrigger>
+          <SelectContent>
+            {( ["Ingreso mensual","Pólizas mensuales","Citas semanales","Referidos"]).map(s=> <SelectItem key={s} value={s}>{s}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Mes (YYYY-MM)"><Input value={form.mes} onChange={e=>set("mes", (e.target as HTMLInputElement).value)} /></Field>
+      <Field label="Meta mensual"><Input type="number" value={form.metaMensual||""} onChange={e=>set("metaMensual", Number((e.target as HTMLInputElement).value))} /></Field>
+      <div className="col-span-2 mt-2"><Button className="w-full" onClick={()=> onSubmit(form)}>Guardar meta</Button></div>
+    </div>
+  );
+}
+
+// ============================================================
+// Cuestionario Médico (crear)
+// ============================================================
+function MedicalPage(){
+  const [rows, setRows] = useState<MedicalForm[]>(MedicalRepo.list());
+  const clients = ClientsRepo.list();
+  const [open, setOpen] = useState(false);
+  useEffect(()=>{ MedicalRepo.saveAll(rows); },[rows]);
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Cuestionario Médico</h2>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild><Button><Plus className="mr-2" size={16}/>Nuevo</Button></DialogTrigger>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader><DialogTitle>Nuevo cuestionario</DialogTitle></DialogHeader>
+            <MedicalFormEditor clients={clients} onSubmit={(m)=>{ setRows([m,...rows]); setOpen(false);} }/>
+          </DialogContent>
+        </Dialog>
+      </div>
+      <Card className="shadow">
+        <CardContent className="p-0 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-neutral-100 text-neutral-700"><tr>
+              <th className="text-left p-3">Cliente</th><th className="text-left p-3">Fecha</th><th className="text-left p-3">Resumen</th></tr></thead>
+            <tbody>
+              {rows.map(r=>{
+                const c = clients.find(x=>x.id===r.clienteId);
+                return (
+                  <tr key={r.id} className="border-t">
+                    <td className="p-3">{c? `${c.nombre} ${c.apellidoPaterno||""}`: "-"}</td>
+                    <td className="p-3">{r.fecha}</td>
+                    <td className="p-3">{[r.enfermedades,r.medicamentos,r.cirugias].filter(Boolean).join(" | ") || "—"}</td>
+                  </tr>
+                );
+              })}
+              {rows.length===0 && (<tr><td className="p-4 text-sm text-muted-foreground" colSpan={3}>Sin cuestionarios</td></tr>)}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function MedicalFormEditor({clients, onSubmit}:{clients:Client[]; onSubmit:(m:MedicalForm)=>void}){
+  const [form, setForm] = useState<MedicalForm>({ id: uid(), clienteId: clients[0]?.id||"", fecha: new Date().toISOString().slice(0,10) });
+  const set = (k: keyof MedicalForm, v:any)=> setForm(prev=> ({...prev, [k]: v }));
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <Field label="Cliente">
+        <Select value={form.clienteId} onValueChange={v=>set("clienteId", v)}>
+          <SelectTrigger><SelectValue/></SelectTrigger>
+          <SelectContent>
+            {clients.map(c=> <SelectItem key={c.id} value={c.id}>{c.nombre} {c.apellidoPaterno||""}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Fecha"><Input type="date" value={form.fecha} onChange={e=>set("fecha", (e.target as HTMLInputElement).value)} /></Field>
+      <Field label="Enfermedades"><Textarea value={form.enfermedades||""} onChange={e=>set("enfermedades", (e.target as HTMLInputElement).value)} /></Field>
+      <Field label="Hospitalización"><Textarea value={form.hospitalizacion||""} onChange={e=>set("hospitalizacion", (e.target as HTMLInputElement).value)} /></Field>
+      <Field label="Medicamentos"><Textarea value={form.medicamentos||""} onChange={e=>set("medicamentos", (e.target as HTMLInputElement).value)} /></Field>
+      <Field label="Cirugías"><Textarea value={form.cirugias||""} onChange={e=>set("cirugias", (e.target as HTMLInputElement).value)} /></Field>
+      <Field label="Antecedentes"><Textarea value={form.antecedentes||""} onChange={e=>set("antecedentes", (e.target as HTMLInputElement).value)} /></Field>
+      <Field label="Otros"><Textarea value={form.otros||""} onChange={e=>set("otros", (e.target as HTMLInputElement).value)} /></Field>
+      <div className="col-span-2 mt-2"><Button className="w-full" onClick={()=> onSubmit(form)}>Guardar cuestionario</Button></div>
+    </div>
+  );
+}
+
+// ============================================================
+// Base de conocimiento (placeholder)
+// ============================================================
+function KBPage(){
+  return (
+    <Card className="shadow">
+      <CardContent className="p-5">
+        <h2 className="text-xl font-semibold mb-2">Base de Conocimiento</h2>
+        <p className="text-sm text-muted-foreground">Agrega guías, scripts, objeciones frecuentes y plantillas. (Luego podemos conectar a Notion/Supabase.)</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================
+// Pendientes (trabajo por hacer)
+// ============================================================
+function PendingPage(){
+  const clients = ClientsRepo.list();
+  const activities = ActivitiesRepo.list();
+  const [rows, setRows] = useState(activities);
+  useEffect(()=>{ ActivitiesRepo.saveAll(rows); },[rows]);
+  const llamadasPorCliente = new Map<string, number>();
+  for(const a of rows){ if(a.tipo === 'Llamada') llamadasPorCliente.set(a.clienteId, (llamadasPorCliente.get(a.clienteId)||0)+1); }
+  const pendientes = clients.filter(c => (c.estatus === 'Prospecto' || !c.estatus) && !llamadasPorCliente.get(c.id));
+
+  const [open, setOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedClient = clients.find(c=>c.id===selectedId||"");
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xl font-semibold">Trabajo por hacer</h2>
+      </div>
+      <Card className="shadow">
+        <CardContent className="p-0 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-neutral-100 text-neutral-700">
+              <tr>
+                <th className="text-left p-3">Cliente</th>
+                <th className="text-left p-3">Estatus</th>
+                <th className="text-left p-3">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pendientes.map(c=> (
+                <tr key={c.id} className="border-t">
+                  <td className="p-3">{c.nombre} {c.apellidoPaterno||''}</td>
+                  <td className="p-3"><Badge className={clientStatusClass[(c.estatus||'Prospecto') as NonNullable<Client['estatus']>]}>{c.estatus||'Prospecto'}</Badge></td>
+                  <td className="p-3">
+                    <Button size="sm" onClick={()=>{ setSelectedId(c.id); setOpen(true); }}>Registrar llamada</Button>
+                  </td>
+                </tr>
+              ))}
+              {pendientes.length===0 && (
+                <tr><td className="p-4 text-sm text-muted-foreground" colSpan={3}>Sin pendientes de prospección 🎉</td></tr>
+              )}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader><DialogTitle>Nueva llamada</DialogTitle></DialogHeader>
+          {selectedClient ? (
+            <ActivityForm
+              clients={[selectedClient]}
+              onSubmit={(a)=>{ setRows([a, ...rows]); setOpen(false); }}
+            />
+          ) : (
+            <div className="text-sm text-muted-foreground">Selecciona un cliente</div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ============================================================
+// Mini pruebas (console) — no afectan UI
+// ============================================================
+(function selfTests(){
+  const log = (name: string, ok: boolean) => console.log(`TEST ${ok?"✔":"✘"} ${name}`);
+  // toAge undefined
+  log("toAge undefined", toAge(undefined) === undefined);
+  const y2000 = toAge("2000-01-01");
+  log("toAge number", typeof y2000 === "number" && y2000 > 20);
+
+  // uid basic properties
+  const ids = new Set(Array.from({length: 200}, () => uid()));
+  log("uid uniqueness (200)", ids.size === 200);
+
+  // repo roundtrip (generic)
+  const tmpKey = "__test_repo__" + Math.random();
+  const R = repo<any>(tmpKey);
+  R.saveAll([{a:1},{b:2}]);
+  const lst = R.list();
+  log("repo roundtrip len", Array.isArray(lst) && lst.length === 2);
+  localStorage.removeItem(tmpKey);
+
+  // repo should return [] if bad JSON stored
+  const tmpKeyBad = "__test_repo_bad__" + Math.random();
+  localStorage.setItem(tmpKeyBad, "{not json}");
+  const Rbad = repo<any>(tmpKeyBad);
+  const lstBad = Rbad.list();
+  log("repo handles bad JSON", Array.isArray(lstBad) && lstBad.length === 0);
+  localStorage.removeItem(tmpKeyBad);
+
+  // datetime-local slice sanity
+  const iso = new Date().toISOString();
+  log("datetime-local slice length", iso.slice(0,16).length === 16);
+
+  // repo missing key returns array
+  const tmpKeyMissing = "__test_repo_missing__" + Math.random();
+  const Rm = repo<any>(tmpKeyMissing);
+  const lstMissing = Rm.list();
+  log("repo missing returns array", Array.isArray(lstMissing));
+
+  // delete cascade test
+  const cid = "__test_client__" + Math.random();
+  ClientsRepo.saveAll([...ClientsRepo.list(), {id: cid, nombre:"X", estatus:"Prospecto"} as Client]);
+  PoliciesRepo.saveAll([...PoliciesRepo.list(), {id: uid(), clienteId: cid, plan:"P", estado:"Propuesta"} as Policy]);
+  ActivitiesRepo.saveAll([...ActivitiesRepo.list(), {id: uid(), clienteId: cid, tipo:"Llamada", fechaHora: new Date().toISOString()} as Activity]);
+  MedicalRepo.saveAll([...MedicalRepo.list(), {id: uid(), clienteId: cid, fecha: "2024-01-01"} as MedicalForm]);
+  deleteClientCascade(cid);
+  const goneClient = ClientsRepo.list().find(c=>c.id===cid) === undefined;
+  const gonePol = PoliciesRepo.list().every(p=>p.clienteId!==cid);
+  const goneAct = ActivitiesRepo.list().every(a=>a.clienteId!==cid);
+  const goneMed = MedicalRepo.list().every(m=>m.clienteId!==cid);
+  log("cascade delete client", goneClient && gonePol && goneAct && goneMed);
+})();
