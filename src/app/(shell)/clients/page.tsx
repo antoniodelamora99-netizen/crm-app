@@ -21,7 +21,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { z } from "zod";
 import { Plus } from "lucide-react";
 
@@ -127,7 +126,7 @@ function ClientsPage() {
     // normalize contactado_fecha
     const prev = ClientsRepo.list();
     const existing = prev.find(x => x.id === c.id);
-    let merged = c;
+    let merged: Client = { ...c };
     if (existing) {
       if (Boolean(existing.contactado) !== Boolean(c.contactado)) {
         // use helper to preserve/set contactado_fecha
@@ -136,6 +135,9 @@ function ClientsPage() {
           merged = { ...updated, ...c } as Client;
         }
       }
+      // preserve metadata fields that should not get lost on edit
+      merged.ownerId = existing.ownerId || merged.ownerId;
+      merged.createdAt = existing.createdAt || merged.createdAt;
     }
     const newList = prev.map(x => x.id === c.id ? merged : x);
     ClientsRepo.saveAll(newList);
@@ -278,7 +280,8 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
     apellidoPaterno: z.string().optional().nullable(),
     apellidoMaterno: z.string().optional().nullable(),
     telefono: z.string().optional().nullable(),
-    email: z.string().email().optional().nullable(),
+  // Email NO obligatorio ni con formato estricto
+  email: z.string().optional().nullable(),
     fechaNacimiento: z.string().optional().nullable(),
     sexo: z.enum(["Masculino","Femenino","Otro"]).optional().nullable(),
     estadoCivil: z.string().optional().nullable(),
@@ -383,11 +386,16 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
         <Field label="Fecha de creación"><Input type="date" value={(form.createdAt ? form.createdAt.slice(0,10) : new Date().toISOString().slice(0,10))} onChange={(e) => set("createdAt", new Date((e.target as HTMLInputElement).value).toISOString())} /></Field>
         <Field label="Contactado">
           <div className="flex items-center gap-2">
-            <Switch checked={!!form.contactado} disabled={!allowContactToggle} onChange={(e) => {
-              const checked = (e.target as HTMLInputElement).checked;
-              set("contactado", checked);
-              set("contactado_fecha", checked ? new Date() : null);
-            }} />
+            <input
+              type="checkbox"
+              checked={!!form.contactado}
+              disabled={!allowContactToggle}
+              onChange={(e) => {
+                const checked = (e.target as HTMLInputElement).checked;
+                set("contactado", checked);
+                set("contactado_fecha", checked ? new Date() : null);
+              }}
+            />
             <span className="text-xs text-neutral-600">{form.contactado ? (form.contactado_fecha ? new Date(form.contactado_fecha as any).toLocaleString() : new Date().toLocaleString()) : "—"}</span>
           </div>
         </Field>
@@ -403,7 +411,9 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
               alert(parsed.error.issues.map(i=>i.message).join("\n"));
               return;
             }
+      // Normaliza email vacío a null para evitar conflictos/validación
       const payload = { ...parsed.data } as Client;
+      if (!payload.email || (payload.email as any).trim?.() === "") payload.email = null as any;
       // normalize contactado_fecha in local payload
       if (payload.contactado) payload.contactado_fecha = (payload as any).contactado_fecha || new Date();
       else payload.contactado_fecha = null;
@@ -412,7 +422,15 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
               const sb = (await import("@/lib/supabaseClient")).getSupabase();
               if (sb) {
                 // map fields to DB columns if needed
-        const dbRow: any = { ...payload, contactado_fecha: payload.contactado ? ((payload as any).contactado_fecha instanceof Date ? (payload as any).contactado_fecha.toISOString() : (payload as any).contactado_fecha || new Date().toISOString()) : null };
+        const dbRow: any = {
+          ...payload,
+          email: payload.email || null,
+          contactado_fecha: payload.contactado
+            ? ((payload as any).contactado_fecha instanceof Date
+                ? (payload as any).contactado_fecha.toISOString()
+                : (payload as any).contactado_fecha || new Date().toISOString())
+            : null,
+        };
     const { data, error } = await sb.from("clients").upsert(dbRow, { onConflict: "id" }).select("id, contactado, contactado_fecha").single();
         if (error) console.warn("Supabase: upsert client error", error.message);
         else console.info("Supabase: upsert client ok", data);
