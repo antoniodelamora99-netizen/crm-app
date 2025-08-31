@@ -34,13 +34,14 @@ function formatMXPhone(raw: string){
 }
 
 // --- status helpers/options -----------------------------------------
-const STATUS_OPTIONS = ["Prospecto","Cliente","Inactivo","Referido"] as const;
+const STATUS_OPTIONS = ["Prospecto","Cliente","Inactivo","Referido","No interesado"] as const;
 function statusClasses(s?: string){
   const key = (s||"Prospecto").toLowerCase();
   switch(key){
     case "cliente": return "bg-green-100 text-green-700";
     case "inactivo": return "bg-gray-200 text-gray-700";
     case "referido": return "bg-purple-100 text-purple-700";
+  case "no interesado": return "bg-rose-100 text-rose-700";
     default: return "bg-blue-100 text-blue-700"; // Prospecto
   }
 }
@@ -264,11 +265,11 @@ function Field({label, children}:{label:string; children:React.ReactNode}){
 }
 
 function ClientForm({ initial, onSubmit, allClients, onDelete }: { initial?: Client | null; onSubmit: (c: Client) => void; allClients: Client[]; onDelete?: (id: string) => void }) {
-  const [form, setForm] = useState<Client>(initial || {
+  const initialForm: Client = initial ?? {
     id: uid(),
     nombre: "",
     estatus: "Prospecto",
-    ownerId: initial?.ownerId,
+    ownerId: undefined,
     telefono: "",
     email: "",
     fechaNacimiento: "",
@@ -286,8 +287,9 @@ function ClientForm({ initial, onSubmit, allClients, onDelete }: { initial?: Cli
     ultimoContacto: "",
     anfRealizado: false,
     anfFecha: "",
-    createdAt: initial?.createdAt ?? new Date().toISOString(),
-  });
+    createdAt: new Date().toISOString(),
+  } as Client;
+  const [form, setForm] = useState<Client>(initialForm);
   useEffect(()=>{ if(initial) setForm(initial); },[initial]);
   const set = (k: keyof Client, v:any)=> setForm(prev=> ({...prev, [k]: v }));
   const isEdit = Boolean(initial);

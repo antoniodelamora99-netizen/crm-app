@@ -46,6 +46,7 @@ const clientStatusClass: Record<NonNullable<Client["estatus"]>, string> = {
   Cliente: "bg-emerald-100 text-emerald-800",
   Inactivo: "bg-neutral-200 text-neutral-800",
   Referido: "bg-violet-100 text-violet-800",
+  "No interesado": "bg-rose-100 text-rose-800",
 };
 
 // Formatea teléfono con espacios (ej. 55 1234 5678)
@@ -292,7 +293,7 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
     dependientes: z.number().optional().nullable(),
     fumador: z.boolean().optional().nullable(),
     fuente: z.string().optional().nullable(),
-    estatus: z.enum(["Prospecto","Cliente","Inactivo","Referido"]).default("Prospecto"),
+  estatus: z.enum(["Prospecto","Cliente","Inactivo","Referido","No interesado"]).default("Prospecto"),
     ultimoContacto: z.string().optional().nullable(),
     anfRealizado: z.boolean().optional().nullable(),
     anfFecha: z.string().optional().nullable(),
@@ -366,7 +367,7 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
           <Select value={form.estatus} onValueChange={(v) => set("estatus", v as any)}>
             <SelectTrigger><SelectValue placeholder="Selecciona" /></SelectTrigger>
             <SelectContent>
-              {["Prospecto","Cliente","Inactivo","Referido"].map(s => (
+                {["Prospecto","Cliente","Inactivo","Referido","No interesado"].map(s => (
                 <SelectItem key={s} value={s}>{s}</SelectItem>
               ))}
             </SelectContent>

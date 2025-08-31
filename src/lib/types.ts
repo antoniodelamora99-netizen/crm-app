@@ -32,7 +32,7 @@ export type Client = {
   fumador?: boolean;
   fuente?: "Mercado natural" | "Referido" | "Redes" | "Frío" | "Evento" | "COI" | "Otros";
   necesidades?: string[];
-  estatus?: "Prospecto" | "Cliente" | "Inactivo" | "Referido";
+  estatus?: "Prospecto" | "Cliente" | "Inactivo" | "Referido" | "No interesado";
   referidoPorId?: string | null;
   asesor?: string;
   ultimoContacto?: string;
