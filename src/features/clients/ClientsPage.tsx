@@ -13,6 +13,7 @@ import { setContactado } from "@/features/clients/utils/contactado";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { ArrowUpDown } from "lucide-react";
 
 // --- contactado flag helpers -----------------------------------------
 
@@ -76,6 +77,7 @@ export function ClientsPage() {
   // Ordenamiento
   type SortKey = "new" | "old" | "name_az" | "name_za" | "status" | "contact";
   const [sortBy, setSortBy] = useState<SortKey>("new");
+  const [invert, setInvert] = useState(false);
 
   // prioridad de estatus
   const statusOrder: Record<string, number> = {
@@ -152,13 +154,15 @@ export function ClientsPage() {
         const bn = `${b.nombre||""} ${b.apellidoPaterno||""} ${b.apellidoMaterno||""}`.trim().toLowerCase();
         return an.localeCompare(bn);
       });
-      return sortBy === "name_za" ? base.reverse() : base;
+      const arr = sortBy === "name_za" ? base.reverse() : base;
+      return invert ? arr.reverse() : arr;
     }
     if (sortBy === "status") {
-      return base.sort((a,b)=> (statusOrder[(a.estatus||"Prospecto").toLowerCase()]||99) - (statusOrder[(b.estatus||"Prospecto").toLowerCase()]||99));
+      const arr = base.sort((a,b)=> (statusOrder[(a.estatus||"Prospecto").toLowerCase()]||99) - (statusOrder[(b.estatus||"Prospecto").toLowerCase()]||99));
+      return invert ? arr.reverse() : arr;
     }
     if (sortBy === "contact") {
-      return base.sort((a,b) => {
+      const arr = base.sort((a,b) => {
         const ac = Number(Boolean(a.contactado));
         const bc = Number(Boolean(b.contactado));
         if (ac !== bc) return ac - bc; // no contactados primero
@@ -166,14 +170,16 @@ export function ClientsPage() {
         const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return bt - at; // recientes primero
       });
+      return invert ? arr.reverse() : arr;
     }
     // default by createdAt (new/old)
-    return base.sort((a,b)=>{
+    const arr = base.sort((a,b)=>{
       const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return sortBy === "old" ? at - bt : bt - at;
     });
-  }, [filtered, sortBy]);
+    return invert ? arr.reverse() : arr;
+  }, [filtered, sortBy, invert]);
 
   return (
     <div className="space-y-3">
@@ -189,9 +195,18 @@ export function ClientsPage() {
               <SelectItem value="name_az">Nombre: A → Z</SelectItem>
               <SelectItem value="name_za">Nombre: Z → A</SelectItem>
               <SelectItem value="status">Estatus</SelectItem>
-              <SelectItem value="contact">No contactados primero</SelectItem>
+              <SelectItem value="contact">Contactados</SelectItem>
             </SelectContent>
           </Select>
+          <Button
+            type="button"
+            variant={invert ? "secondary" : "outline"}
+            onClick={() => setInvert(v=>!v)}
+            title="Invertir orden"
+            className="px-2"
+          >
+            <ArrowUpDown size={16} />
+          </Button>
           <Dialog open={openNew} onOpenChange={setOpenNew}>
             <DialogTrigger asChild>
               <Button>Nuevo</Button>

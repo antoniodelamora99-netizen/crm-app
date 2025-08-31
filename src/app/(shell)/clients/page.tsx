@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { z } from "zod";
-import { Plus } from "lucide-react";
+import { Plus, ArrowUpDown } from "lucide-react";
 
 import type { Client } from "@/lib/types";
 import { uid } from "@/lib/types";
@@ -65,6 +65,7 @@ function ClientsPage() {
   const [rows, setRows] = useState<Client[]>(() => ClientsRepo.list());
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<"created" | "name" | "status" | "contact">("created");
+  const [invert, setInvert] = useState(false);
   const [openNew, setOpenNew] = useState(false);
   const [openEdit, setOpenEdit] = useState<{ open: boolean; client: Client | null }>({ open: false, client: null });
 
@@ -113,8 +114,8 @@ function ClientsPage() {
       const sb = b.estatus || "Prospecto";
       return sa.localeCompare(sb);
     });
-    return sorted;
-  }, [scoped, q, sortBy]);
+    return invert ? sorted.reverse() : sorted;
+  }, [scoped, q, sortBy, invert]);
 
   // Crear/Actualizar/Borrar
   const handleCreate = (c: Client) => {
@@ -187,9 +188,18 @@ function ClientsPage() {
               <SelectItem value="created">Fecha de creación</SelectItem>
               <SelectItem value="name">Nombre (A-Z)</SelectItem>
               <SelectItem value="status">Estatus</SelectItem>
-              <SelectItem value="contact">No contactados primero</SelectItem>
+              <SelectItem value="contact">Contactados</SelectItem>
             </SelectContent>
           </Select>
+          <Button
+            type="button"
+            variant={invert ? "secondary" : "outline"}
+            onClick={() => setInvert((v) => !v)}
+            title="Invertir orden"
+            className="px-2"
+          >
+            <ArrowUpDown size={16} />
+          </Button>
           <Dialog open={openNew} onOpenChange={setOpenNew}>
             <DialogTrigger asChild>
               <Button><Plus className="mr-2" size={16}/>Nuevo</Button>
