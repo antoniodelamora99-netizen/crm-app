@@ -36,6 +36,7 @@ export type Client = {
   referidoPorId?: string | null;
   asesor?: string;
   ultimoContacto?: string;
+  notas?: string; // notas libres del cliente
   anfRealizado?: boolean;
   anfFecha?: string;
   createdAt?: string;

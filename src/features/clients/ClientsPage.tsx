@@ -285,6 +285,7 @@ function ClientForm({ initial, onSubmit, allClients, onDelete }: { initial?: Cli
     referidoPorId: undefined,
     asesor: "",
     ultimoContacto: "",
+  notas: "",
     anfRealizado: false,
     anfFecha: "",
     createdAt: new Date().toISOString(),
@@ -404,6 +405,12 @@ function ClientForm({ initial, onSubmit, allClients, onDelete }: { initial?: Cli
       <Field label="Asesor / ejecutivo"><Input value={form.asesor||""} onChange={e=>set("asesor", (e.target as HTMLInputElement).value)} /></Field>
 
       <Field label="Último contacto"><Input type="date" value={form.ultimoContacto||""} onChange={e=>set("ultimoContacto", (e.target as HTMLInputElement).value)} /></Field>
+
+      <div className="col-span-2">
+        <Field label="Notas">
+          <Input value={form.notas||""} onChange={e=>set("notas", (e.target as HTMLInputElement).value)} />
+        </Field>
+      </div>
 
       <Field label="¿Ya fue contactado?">
         <input

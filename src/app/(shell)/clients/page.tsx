@@ -295,6 +295,7 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
     fuente: z.string().optional().nullable(),
   estatus: z.enum(["Prospecto","Cliente","Inactivo","Referido","No interesado"]).default("Prospecto"),
     ultimoContacto: z.string().optional().nullable(),
+  notas: z.string().optional().nullable(),
     anfRealizado: z.boolean().optional().nullable(),
     anfFecha: z.string().optional().nullable(),
     createdAt: z.string().optional().nullable(),
@@ -302,7 +303,7 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
   contactado_fecha: z.date().nullable().optional(),
   });
   const [form, setForm] = useState<Client>(
-    initial || { id: uid(), nombre: "", estatus: "Prospecto", createdAt: new Date().toISOString(), contactado: false }
+    initial || { id: uid(), nombre: "", estatus: "Prospecto", createdAt: new Date().toISOString(), contactado: false, notas: "" }
   );
   useEffect(() => { if (initial) setForm(initial); }, [initial]);
   const set = (k: keyof Client, v: any) => setForm((prev) => ({ ...prev, [k]: v }));
@@ -374,6 +375,11 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
           </Select>
         </Field>
         <Field label="Último contacto"><Input type="date" value={form.ultimoContacto || ""} onChange={(e) => set("ultimoContacto", (e.target as HTMLInputElement).value)} /></Field>
+        <div className="col-span-2">
+          <Field label="Notas">
+            <Textarea value={form.notas || ""} onChange={(e) => set("notas", (e.target as HTMLTextAreaElement).value)} />
+          </Field>
+        </div>
         <Field label="ANF realizado">
           <Select value={form.anfRealizado ? "si" : "no"} onValueChange={(v) => set("anfRealizado", v === "si")}> 
             <SelectTrigger><SelectValue placeholder="Selecciona" /></SelectTrigger>
