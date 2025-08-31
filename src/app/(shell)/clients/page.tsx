@@ -21,6 +21,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { z } from "zod";
 import { Plus } from "lucide-react";
 
 import type { Client } from "@/lib/types";
@@ -59,6 +61,7 @@ function fmtPhone(v?: string) {
 // Página
 function ClientsPage() {
   const current = getCurrentUser();
+  const allowContactToggle = current?.role === "asesor"; // promotor/gerente disabled
   const [rows, setRows] = useState<Client[]>(() => ClientsRepo.list());
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<"created" | "name" | "status">("created");
@@ -112,8 +115,8 @@ function ClientsPage() {
       ownerId,
       createdAt: c.createdAt || new Date().toISOString(),
     };
-    // ensure contacto date when created as contactado
-    if (withMeta.contactado && !withMeta.contactadoAt) withMeta.contactadoAt = new Date().toISOString();
+  // ensure contacto date when created as contactado
+  if (withMeta.contactado && !withMeta.contactado_fecha) withMeta.contactado_fecha = new Date().toISOString();
     const updated = [withMeta, ...rows];
     ClientsRepo.saveAll(updated);
     setRows(updated);
@@ -121,13 +124,13 @@ function ClientsPage() {
   };
 
   const handleUpdate = (c: Client) => {
-    // normalize contactadoAt
+    // normalize contactado_fecha
     const prev = ClientsRepo.list();
     const existing = prev.find(x => x.id === c.id);
     let merged = c;
     if (existing) {
       if (Boolean(existing.contactado) !== Boolean(c.contactado)) {
-        // use helper to preserve/set contactadoAt
+        // use helper to preserve/set contactado_fecha
         const updated = setContactado(c.id, Boolean(c.contactado));
         if (updated) {
           merged = { ...updated, ...c } as Client;
@@ -215,7 +218,12 @@ function ClientsPage() {
                   <td className="p-3">{toAge(c.fechaNacimiento) ?? "-"}</td>
                   <td className="p-3">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "-"}</td>
                   <td className="p-3">
-                    <input type="checkbox" checked={Boolean(c.contactado)} onChange={(e)=> toggleContactado(c.id, e.currentTarget.checked)} />
+                    <input
+                      type="checkbox"
+                      checked={Boolean(c.contactado)}
+                      disabled={!allowContactToggle}
+                      onChange={(e)=> toggleContactado(c.id, e.currentTarget.checked)}
+                    />
                   </td>
                   <td className="p-3 space-x-2">
                     <Button variant="secondary" size="sm" onClick={() => setOpenEdit({ open: true, client: c })}>Editar</Button>
@@ -262,8 +270,35 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; onSubmit: (c: Client) => void; onDelete?: () => void; }) {
+  const user = getCurrentUser();
+  const allowContactToggle = user?.role === "asesor"; // promotor/gerente disabled
+  const schema = z.object({
+    id: z.string().min(1),
+    nombre: z.string().min(1, "Nombre requerido"),
+    apellidoPaterno: z.string().optional().nullable(),
+    apellidoMaterno: z.string().optional().nullable(),
+    telefono: z.string().optional().nullable(),
+    email: z.string().email().optional().nullable(),
+    fechaNacimiento: z.string().optional().nullable(),
+    sexo: z.enum(["Masculino","Femenino","Otro"]).optional().nullable(),
+    estadoCivil: z.string().optional().nullable(),
+    estadoResidencia: z.string().optional().nullable(),
+    ocupacion: z.string().optional().nullable(),
+    empresa: z.string().optional().nullable(),
+    ingresoHogar: z.number().optional().nullable(),
+    dependientes: z.number().optional().nullable(),
+    fumador: z.boolean().optional().nullable(),
+    fuente: z.string().optional().nullable(),
+    estatus: z.enum(["Prospecto","Cliente","Inactivo","Referido"]).default("Prospecto"),
+    ultimoContacto: z.string().optional().nullable(),
+    anfRealizado: z.boolean().optional().nullable(),
+    anfFecha: z.string().optional().nullable(),
+    createdAt: z.string().optional().nullable(),
+  contactado: z.boolean().default(false),
+  contactado_fecha: z.date().nullable().optional(),
+  });
   const [form, setForm] = useState<Client>(
-    initial || { id: uid(), nombre: "", estatus: "Prospecto", createdAt: new Date().toISOString() }
+    initial || { id: uid(), nombre: "", estatus: "Prospecto", createdAt: new Date().toISOString(), contactado: false }
   );
   useEffect(() => { if (initial) setForm(initial); }, [initial]);
   const set = (k: keyof Client, v: any) => setForm((prev) => ({ ...prev, [k]: v }));
@@ -271,7 +306,7 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
 
   return (
     <div className="grid grid-cols-2 gap-3">
-      <div className="col-span-2 grid grid-cols-2 gap-3">
+  <div className="col-span-2 grid grid-cols-2 gap-3">
         <Field label="Nombre"><Input value={form.nombre} onChange={(e) => set("nombre", (e.target as HTMLInputElement).value)} /></Field>
         <Field label="Apellido paterno"><Input value={form.apellidoPaterno || ""} onChange={(e) => set("apellidoPaterno", (e.target as HTMLInputElement).value)} /></Field>
         <Field label="Apellido materno"><Input value={form.apellidoMaterno || ""} onChange={(e) => set("apellidoMaterno", (e.target as HTMLInputElement).value)} /></Field>
@@ -346,16 +381,43 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
         </Field>
         <Field label="Fecha ANF"><Input type="date" value={form.anfFecha || ""} onChange={(e) => set("anfFecha", (e.target as HTMLInputElement).value)} /></Field>
         <Field label="Fecha de creación"><Input type="date" value={(form.createdAt ? form.createdAt.slice(0,10) : new Date().toISOString().slice(0,10))} onChange={(e) => set("createdAt", new Date((e.target as HTMLInputElement).value).toISOString())} /></Field>
+        <Field label="Contactado">
+          <div className="flex items-center gap-2">
+            <Switch checked={!!form.contactado} disabled={!allowContactToggle} onChange={(e) => {
+              const checked = (e.target as HTMLInputElement).checked;
+              set("contactado", checked);
+              set("contactado_fecha", checked ? new Date() : null);
+            }} />
+            <span className="text-xs text-neutral-600">{form.contactado ? (form.contactado_fecha ? new Date(form.contactado_fecha as any).toLocaleString() : new Date().toLocaleString()) : "—"}</span>
+          </div>
+        </Field>
       </div>
       <DialogFooter className="col-span-2 mt-2 flex items-center justify-between gap-2">
         {isEdit && (
           <Button variant="destructive" type="button" onClick={() => onDelete && onDelete()}>Borrar cliente</Button>
         )}
-        <Button onClick={() => {
-            // ensure contactadoAt handling before submit
-            const payload = { ...form } as Client;
-            if (payload.contactado && !payload.contactadoAt) payload.contactadoAt = new Date().toISOString();
-            if (!payload.contactado) payload.contactadoAt = undefined;
+    <Button onClick={async () => {
+            // validate
+      const parsed = schema.safeParse({ ...form, contactado_fecha: form.contactado ? (form.contactado_fecha ? new Date(form.contactado_fecha as any) : new Date()) : null });
+            if (!parsed.success) {
+              alert(parsed.error.issues.map(i=>i.message).join("\n"));
+              return;
+            }
+      const payload = { ...parsed.data } as Client;
+      // normalize contactado_fecha in local payload
+      if (payload.contactado) payload.contactado_fecha = (payload as any).contactado_fecha || new Date();
+      else payload.contactado_fecha = null;
+            // optional Supabase upsert
+      try {
+              const sb = (await import("@/lib/supabaseClient")).getSupabase();
+              if (sb) {
+                // map fields to DB columns if needed
+        const dbRow: any = { ...payload, contactado_fecha: payload.contactado ? ((payload as any).contactado_fecha instanceof Date ? (payload as any).contactado_fecha.toISOString() : (payload as any).contactado_fecha || new Date().toISOString()) : null };
+    const { data, error } = await sb.from("clients").upsert(dbRow, { onConflict: "id" }).select("id, contactado, contactado_fecha").single();
+        if (error) console.warn("Supabase: upsert client error", error.message);
+        else console.info("Supabase: upsert client ok", data);
+              }
+            } catch {}
             onSubmit(payload);
           }} className="ml-auto">{isEdit ? "Actualizar cliente" : "Guardar cliente"}</Button>
       </DialogFooter>

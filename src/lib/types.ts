@@ -42,7 +42,7 @@ export type Client = {
   ownerId?: string;
   // Contacto quick flag + fecha
   contactado?: boolean;
-  contactadoAt?: string; // ISO date when first marked contactado
+  contactado_fecha?: string | Date | null; // ISO string or Date when marked contactado
 };
 
 export type Policy = {

@@ -93,7 +93,7 @@ export function ClientsPage() {
     setOpenNew(false);
   };
   const handleUpdate = (c: Client) => {
-    // If contactado changed, use helper to preserve contactadoAt
+  // If contactado changed, use helper to preserve contactado_fecha
     const prev = ClientsRepo.list();
     const exists = prev.find(x => x.id === c.id);
     if (exists && Boolean(exists.contactado) !== Boolean(c.contactado)) {
