@@ -74,7 +74,7 @@ export function ClientsPage() {
   const [openEdit, setOpenEdit] = useState<{open:boolean, client: Client | null}>({open:false, client:null});
 
   // Ordenamiento
-  type SortKey = "new" | "old" | "name_az" | "name_za" | "status";
+  type SortKey = "new" | "old" | "name_az" | "name_za" | "status" | "contact";
   const [sortBy, setSortBy] = useState<SortKey>("new");
 
   // prioridad de estatus
@@ -157,6 +157,16 @@ export function ClientsPage() {
     if (sortBy === "status") {
       return base.sort((a,b)=> (statusOrder[(a.estatus||"Prospecto").toLowerCase()]||99) - (statusOrder[(b.estatus||"Prospecto").toLowerCase()]||99));
     }
+    if (sortBy === "contact") {
+      return base.sort((a,b) => {
+        const ac = Number(Boolean(a.contactado));
+        const bc = Number(Boolean(b.contactado));
+        if (ac !== bc) return ac - bc; // no contactados primero
+        const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bt - at; // recientes primero
+      });
+    }
     // default by createdAt (new/old)
     return base.sort((a,b)=>{
       const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -179,6 +189,7 @@ export function ClientsPage() {
               <SelectItem value="name_az">Nombre: A → Z</SelectItem>
               <SelectItem value="name_za">Nombre: Z → A</SelectItem>
               <SelectItem value="status">Estatus</SelectItem>
+              <SelectItem value="contact">No contactados primero</SelectItem>
             </SelectContent>
           </Select>
           <Dialog open={openNew} onOpenChange={setOpenNew}>

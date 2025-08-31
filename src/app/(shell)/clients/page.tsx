@@ -64,7 +64,7 @@ function ClientsPage() {
   const allowContactToggle = current?.role === "asesor"; // promotor/gerente disabled
   const [rows, setRows] = useState<Client[]>(() => ClientsRepo.list());
   const [q, setQ] = useState("");
-  const [sortBy, setSortBy] = useState<"created" | "name" | "status">("created");
+  const [sortBy, setSortBy] = useState<"created" | "name" | "status" | "contact">("created");
   const [openNew, setOpenNew] = useState(false);
   const [openEdit, setOpenEdit] = useState<{ open: boolean; client: Client | null }>({ open: false, client: null });
 
@@ -89,6 +89,15 @@ function ClientsPage() {
       )
     );
     const sorted = [...bySearch].sort((a, b) => {
+      if (sortBy === "contact") {
+        const ac = Number(Boolean(a.contactado));
+        const bc = Number(Boolean(b.contactado));
+        if (ac !== bc) return ac - bc; // 0 (no contactado) primero
+        // tie-breaker: recent created first
+        const ad = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bd = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bd - ad;
+      }
       if (sortBy === "created") {
         const ad = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const bd = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -178,6 +187,7 @@ function ClientsPage() {
               <SelectItem value="created">Fecha de creación</SelectItem>
               <SelectItem value="name">Nombre (A-Z)</SelectItem>
               <SelectItem value="status">Estatus</SelectItem>
+              <SelectItem value="contact">No contactados primero</SelectItem>
             </SelectContent>
           </Select>
           <Dialog open={openNew} onOpenChange={setOpenNew}>
