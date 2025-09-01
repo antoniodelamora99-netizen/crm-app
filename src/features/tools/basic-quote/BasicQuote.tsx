@@ -4,12 +4,43 @@ import React, { useMemo, useState } from "react";
 import { computeUdiQuote, fmt2, Periodicity } from "@/lib/finance/udi";
 
 export default function BasicQuote() {
-  const [udiToday, setUdiToday] = useState<number>(7.0);
-  const [inflPct, setInflPct] = useState<number>(3);
-  const [years, setYears] = useState<number>(10);
-  const [periodicity, setPeriodicity] = useState<Periodicity>("Mensual");
-  const [udisPerPeriod, setUdisPerPeriod] = useState<number>(10);
-  const [pvRatePct, setPvRatePct] = useState<number>(0);
+  // Keep raw string inputs to control formatting and avoid browser quirks with leading zeros
+  const [udiTodayTxt, setUdiTodayTxt] = useState<string>("8.5");
+  const [inflPctTxt, setInflPctTxt] = useState<string>("4.5");
+  const [yearsTxt, setYearsTxt] = useState<string>("10");
+  const [periodicity, setPeriodicity] = useState<Periodicity>("Anual");
+  const [udisPerPeriodTxt, setUdisPerPeriodTxt] = useState<string>("1000");
+  const [pvRatePctTxt, setPvRatePctTxt] = useState<string>("0");
+
+  // Normalizers -------------------------------------------------------------
+  const normDecimal = (s: string) => {
+    // Trim spaces
+    let v = s.replace(/\s+/g, "");
+    if (v === "") return "";
+    // Allow only one leading minus, digits and one dot
+    v = v.replace(/[^0-9.\-]/g, "");
+    // If starts with '.', prefix 0
+    if (v.startsWith(".")) v = "0" + v;
+    // If starts with multiple zeros like 00.5 or 008, collapse to single zero except keep 0.x
+    if (/^0+\d/.test(v)) v = v.replace(/^0+/, "");
+    // Edge: becomes empty after strip -> 0
+    if (v === "") v = "0";
+    return v;
+  };
+  const normInteger = (s: string) => {
+    let v = s.replace(/\s+/g, "");
+    v = v.replace(/[^0-9\-]/g, "");
+    // Remove leading zeros (keep single zero)
+    v = v.replace(/^0+(\d)/, "$1");
+    if (v === "") v = "0";
+    return v;
+  };
+
+  const udiToday = parseFloat(udiTodayTxt || "0");
+  const inflPct = parseFloat(inflPctTxt || "0");
+  const years = parseInt(yearsTxt || "0", 10);
+  const udisPerPeriod = parseInt(udisPerPeriodTxt || "0", 10);
+  const pvRatePct = parseFloat(pvRatePctTxt || "0");
 
   const [showValueAtYear, setShowValueAtYear] = useState(true);
   const [showPresentValue, setShowPresentValue] = useState(true);
@@ -23,32 +54,32 @@ export default function BasicQuote() {
       <div className="grid grid-cols-2 gap-3">
         <label className="grid gap-1">
           <span className="text-xs text-neutral-600">Precio UDI hoy</span>
-          <input type="number" value={udiToday} onChange={(e) => setUdiToday(Number(e.target.value))} className="input" />
+          <input type="text" inputMode="decimal" value={udiTodayTxt} onChange={(e) => setUdiTodayTxt(normDecimal((e.target as HTMLInputElement).value))} onBlur={(e)=> setUdiTodayTxt(normDecimal((e.target as HTMLInputElement).value))} className="input" />
         </label>
         <label className="grid gap-1">
           <span className="text-xs text-neutral-600">Inflación anual (%)</span>
-          <input type="number" value={inflPct} onChange={(e) => setInflPct(Number(e.target.value))} className="input" />
+          <input type="text" inputMode="decimal" value={inflPctTxt} onChange={(e) => setInflPctTxt(normDecimal((e.target as HTMLInputElement).value))} onBlur={(e)=> setInflPctTxt(normDecimal((e.target as HTMLInputElement).value))} className="input" />
         </label>
         <label className="grid gap-1">
           <span className="text-xs text-neutral-600">Años</span>
-          <input type="number" value={years} onChange={(e) => setYears(Number(e.target.value))} className="input" />
+          <input type="text" inputMode="numeric" value={yearsTxt} onChange={(e) => setYearsTxt(normInteger((e.target as HTMLInputElement).value))} onBlur={(e)=> setYearsTxt(normInteger((e.target as HTMLInputElement).value))} className="input" />
         </label>
         <label className="grid gap-1">
           <span className="text-xs text-neutral-600">UDIs por periodo</span>
-          <input type="number" value={udisPerPeriod} onChange={(e) => setUdisPerPeriod(Number(e.target.value))} className="input" />
+          <input type="text" inputMode="numeric" value={udisPerPeriodTxt} onChange={(e) => setUdisPerPeriodTxt(normInteger((e.target as HTMLInputElement).value))} onBlur={(e)=> setUdisPerPeriodTxt(normInteger((e.target as HTMLInputElement).value))} className="input" />
         </label>
         <label className="grid gap-1 col-span-2">
           <span className="text-xs text-neutral-600">Periodicidad</span>
           <select value={periodicity} onChange={(e) => setPeriodicity(e.target.value as Periodicity)} className="input">
-            <option>Mensual</option>
-            <option>Trimestral</option>
-            <option>Semestral</option>
             <option>Anual</option>
+            <option>Semestral</option>
+            <option>Trimestral</option>
+            <option>Mensual</option>
           </select>
         </label>
         <label className="grid gap-1 col-span-2">
           <span className="text-xs text-neutral-600">Tasa de descuento (%)</span>
-          <input type="number" value={pvRatePct} onChange={(e) => setPvRatePct(Number(e.target.value))} className="input" />
+          <input type="text" inputMode="decimal" value={pvRatePctTxt} onChange={(e) => setPvRatePctTxt(normDecimal((e.target as HTMLInputElement).value))} onBlur={(e)=> setPvRatePctTxt(normDecimal((e.target as HTMLInputElement).value))} className="input" />
         </label>
       </div>
 
