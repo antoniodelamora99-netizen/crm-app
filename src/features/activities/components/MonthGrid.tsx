@@ -10,6 +10,7 @@ type Props = {
 
 export default function MonthGrid({ anchor, events, onEventClick, onSlotClick }: Props) {
   const days = gridOfMonth(anchor);
+  const today = new Date();
   const inSameDay = (d: Date, ev: CalEvent) => {
     const s = toDate(ev.start);
     return (
@@ -31,7 +32,21 @@ export default function MonthGrid({ anchor, events, onEventClick, onSlotClick }:
               onSlotClick?.(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 9, 0))
             }
           >
-            <div className="text-xs font-medium mb-1">{d.getDate()}</div>
+            {(() => {
+              const isToday = d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
+              const isOutside = d.getMonth() !== anchor.getMonth();
+              const baseNum = (
+                <span
+                  className={
+                    `inline-flex items-center justify-center w-6 h-6 rounded-full select-none ` +
+                    (isToday ? `bg-red-500 text-white font-semibold` : isOutside ? `text-neutral-400` : `text-neutral-900`)
+                  }
+                >
+                  {d.getDate()}
+                </span>
+              );
+              return <div className="text-xs font-medium mb-1">{baseNum}</div>;
+            })()}
             <div className="flex flex-col gap-1">
               {dayEvents.slice(0, 4).map((ev) => (
                 <div

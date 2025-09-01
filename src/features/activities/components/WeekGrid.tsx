@@ -27,11 +27,18 @@ export default function WeekGrid({ anchor, events, onEventClick, onSlotClick }: 
     <div className="grid grid-cols-[80px_repeat(7,minmax(0,1fr))]">
       {/* header */}
       <div />
-      {days.map(d => (
-        <div key={d.toISOString()} className="text-center text-sm font-medium pb-2">
-          {d.toLocaleDateString("es-MX", { weekday: "short", day: "numeric" })}
-        </div>
-      ))}
+      {days.map(d => {
+        const today = new Date();
+        const isToday = d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
+        const weekday = d.toLocaleDateString("es-MX", { weekday: "short" });
+        const dayNum = d.getDate();
+        return (
+          <div key={d.toISOString()} className="text-center text-sm font-medium pb-2">
+            <span className="capitalize">{weekday}</span>{" "}
+            <span className={isToday ? "inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-500 text-white" : ""}>{dayNum}</span>
+          </div>
+        );
+      })}
       {/* body */}
       {hrs.map(h => (
         <div key={`h-${h}`} className="contents">
