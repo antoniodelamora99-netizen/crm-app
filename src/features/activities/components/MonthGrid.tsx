@@ -11,6 +11,8 @@ type Props = {
 export default function MonthGrid({ anchor, events, onEventClick, onSlotClick }: Props) {
   const days = gridOfMonth(anchor);
   const today = new Date();
+  // Weekday labels: take the first 7 cells from the grid (always Monday-first)
+  const weekHeader = days.slice(0, 7).map(d => d.toLocaleDateString("es-MX", { weekday: "short" }));
   const inSameDay = (d: Date, ev: CalEvent) => {
     const s = toDate(ev.start);
     return (
@@ -21,7 +23,15 @@ export default function MonthGrid({ anchor, events, onEventClick, onSlotClick }:
   };
 
   return (
-    <div className="grid grid-cols-7 border rounded-md overflow-hidden bg-white">
+    <div className="space-y-1">
+      {/* Weekday headers */}
+      <div className="grid grid-cols-7 text-center text-[11px] text-neutral-600">
+        {weekHeader.map((w, i) => (
+          <div key={i} className="py-1 font-medium capitalize">{w}</div>
+        ))}
+      </div>
+      {/* Month grid */}
+      <div className="grid grid-cols-7 border rounded-md overflow-hidden bg-white">
       {days.map((d, idx) => {
         const dayEvents = events.filter((ev) => inSameDay(d, ev));
         return (
@@ -69,6 +79,7 @@ export default function MonthGrid({ anchor, events, onEventClick, onSlotClick }:
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
