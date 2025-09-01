@@ -350,9 +350,25 @@ function ActivitiesPage_OLD() {
             .rbc-event .rbc-event-label { display: none; }
             .rbc-month-view .rbc-event { padding: 2px 6px; border-radius: 8px; }
             .rbc-date-cell { padding: 4px 6px; }
+            /* Today in month grid: red circular badge behind day number */
             .rbc-date-cell.rbc-now { color: #111827; font-weight: 700; }
+            .rbc-month-view .rbc-date-cell .rbc-button-link { color: #111827; }
+            .rbc-month-view .rbc-date-cell.rbc-now .rbc-button-link {
+              background: #ff3b30; color: #ffffff; border-radius: 9999px;
+              min-width: 22px; height: 22px; line-height: 22px;
+              display: inline-flex; align-items: center; justify-content: center;
+              font-weight: 700;
+            }
             .rbc-off-range-bg { background: #fafafa; }
-            .rbc-off-range { color: #9ca3af; }
+            /* Out-of-month dates: gray only the date number, keep events normal */
+            .rbc-month-view .rbc-off-range .rbc-button-link { color: #9ca3af !important; }
+            /* Weekly header: small red dot next to today label */
+            .rbc-time-header .rbc-header.rbc-today::after {
+              content: "";
+              display: inline-block; margin-left: 6px;
+              width: 6px; height: 6px; background: #ff3b30; border-radius: 9999px;
+              vertical-align: middle;
+            }
             .rbc-day-bg:hover { background: #f5f7fb; }
             .rbc-allday-cell, .rbc-allday-events { border-color: #e5e7eb; }
           `}</style>
@@ -482,7 +498,7 @@ function ActivitiesPage_OLD() {
                 </div>
               )}
               <Field label="Lugar"><Input value={draft.lugar || ""} onChange={e => setDraft({ ...draft!, lugar: (e.target as HTMLInputElement).value })} /></Field>
-              <Field label="Notas"><Textarea value={draft.notas || ""} onChange={e => setDraft({ ...draft!, notas: (e.target as HTMLInputElement).value })} /></Field>
+              <Field label="Notas"><Textarea value={draft.notas || ""} onChange={e => setDraft({ ...draft!, notas: (e.target as HTMLTextAreaElement).value })} /></Field>
               <Field label="Realizada">
                 <Select value={draft.realizada ? "si" : "no"} onValueChange={(v) => setDraft({ ...draft!, realizada: v === "si" })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
