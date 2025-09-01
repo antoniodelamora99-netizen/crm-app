@@ -17,7 +17,7 @@ import { getCurrentUser, filterByScope, getUsers, visibleOwnerIdsFor } from "@/l
 
 import { Calendar, dateFnsLocalizer, Views, View } from "react-big-calendar";
 import { format, parse, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfDay, endOfDay, addHours, addMinutes, addMonths, endOfMonth as endOfMonthDF, getDay } from "date-fns";
-import es from "date-fns/locale/es";
+import { es } from "date-fns/locale/es";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 
 /* ===== Repos ===== */
@@ -51,7 +51,9 @@ function Field({label, children}:{label:string; children:React.ReactNode}){
 /* ===== Colores ===== */
 const colorMap: Record<NonNullable<Activity["color"]>, string> = {
   verde: "#22c55e",
+  verdeamarillento: "#16a34a",
   amarillo: "#f59e0b",
+  naranja: "#fb923c",
   rojo: "#ef4444",
 };
 
@@ -227,7 +229,6 @@ function ActivitiesPage_OLD() {
       realizada: false,
       generoCierre: false,
       color: "verde",
-      sharedWith: [],
     };
     setDraft(base);
     setOpen(true);
@@ -286,8 +287,7 @@ function ActivitiesPage_OLD() {
             fechaHora: new Date().toISOString(),
             fechaHoraFin: addHours(new Date(),1).toISOString(),
             realizada: false, generoCierre: false, color: "verde",
-            sharedWith: [],
-          });
+          } as Activity);
           setOpen(true);
         }}>
           Nueva
@@ -306,9 +306,9 @@ function ActivitiesPage_OLD() {
             defaultView={Views.DAY}
             views={[Views.DAY, Views.WEEK, Views.MONTH]}
             view={calView}
-            onView={(v) => setCalView(v)}
+            onView={(v: View) => setCalView(v)}
             date={calDate}
-            onNavigate={(d) => setCalDate(d)}
+            onNavigate={(d: Date) => setCalDate(d)}
             step={30}
             timeslots={2}
             min={new Date(1970, 0, 1, 6, 0, 0)}
@@ -320,13 +320,13 @@ function ActivitiesPage_OLD() {
             onSelectEvent={onSelectEvent}
             messages={{ month: "Mes", week: "Semana", day: "Día", agenda: "Agenda", next: ">", previous: "<", today: "Hoy" }}
             formats={{
-              dayFormat: (date) => format(date, "eee d", { locale: es }),
-              weekdayFormat: (date) => format(date, "eee", { locale: es }),
-              dayHeaderFormat: (date) => format(date, "eeee d 'de' MMMM", { locale: es }),
-              dayRangeHeaderFormat: ({ start, end }) =>
+              dayFormat: (date: Date) => format(date, "eee d", { locale: es }),
+              weekdayFormat: (date: Date) => format(date, "eee", { locale: es }),
+              dayHeaderFormat: (date: Date) => format(date, "eeee d 'de' MMMM", { locale: es }),
+              dayRangeHeaderFormat: ({ start, end }: { start: Date; end: Date }) =>
                 `${format(start, "d 'de' MMM", { locale: es })} – ${format(end, "d 'de' MMM", { locale: es })}`,
-              monthHeaderFormat: (date) => format(date, "MMMM 'de' yyyy", { locale: es }),
-              timeGutterFormat: (date) => format(date, "h:mm a", { locale: es }),
+              monthHeaderFormat: (date: Date) => format(date, "MMMM 'de' yyyy", { locale: es }),
+              timeGutterFormat: (date: Date) => format(date, "h:mm a", { locale: es }),
               eventTimeRangeFormat: () => "",  // oculta "2:30–3:30"
               eventTimeRangeStartFormat: () => "",
               eventTimeRangeEndFormat: () => "",
