@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { computeUdiQuote, fmt2, Periodicity } from "@/lib/finance/udi";
+import { getLatestUdi } from "@/lib/finance/udiProvider";
 
 export default function BasicQuote() {
   // Keep raw string inputs to control formatting and avoid browser quirks with leading zeros
@@ -44,6 +45,32 @@ export default function BasicQuote() {
 
   const [showValueAtYear, setShowValueAtYear] = useState(true);
   const [showPresentValue, setShowPresentValue] = useState(true);
+  const [autoDaily, setAutoDaily] = useState<boolean>(true);
+  const [loadingUdi, setLoadingUdi] = useState<boolean>(false);
+
+  // Load last cached UDI or fetch latest on mount/each day when autoDaily is on
+  useEffect(() => {
+    const key = "tools.basicQuote.udi.latest";
+    const cached = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+    if (cached) {
+      try {
+        const obj = JSON.parse(cached);
+        if (obj && typeof obj.value === 'number') setUdiTodayTxt(String(obj.value));
+      } catch {}
+    }
+    if (!autoDaily) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingUdi(true);
+      const latest = await getLatestUdi();
+      setLoadingUdi(false);
+      if (!cancelled && latest && isFinite(latest.value) && latest.value > 0) {
+        setUdiTodayTxt(String(latest.value));
+        try { window.localStorage.setItem(key, JSON.stringify(latest)); } catch {}
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [autoDaily]);
 
   const input = useMemo(() => ({ udiToday, inflPct, years, periodicity, udisPerPeriod, pvRatePct }), [udiToday, inflPct, years, periodicity, udisPerPeriod, pvRatePct]);
 
@@ -54,7 +81,15 @@ export default function BasicQuote() {
       <div className="grid grid-cols-2 gap-3">
         <label className="grid gap-1">
           <span className="text-xs text-neutral-600">Precio UDI hoy</span>
-          <input type="text" inputMode="decimal" value={udiTodayTxt} onChange={(e) => setUdiTodayTxt(normDecimal((e.target as HTMLInputElement).value))} onBlur={(e)=> setUdiTodayTxt(normDecimal((e.target as HTMLInputElement).value))} className="input" />
+          <div className="flex items-center gap-2">
+            <input type="text" inputMode="decimal" value={udiTodayTxt} onChange={(e) => setUdiTodayTxt(normDecimal((e.target as HTMLInputElement).value))} onBlur={(e)=> setUdiTodayTxt(normDecimal((e.target as HTMLInputElement).value))} className="input flex-1" />
+            <button type="button" className="px-2 py-1 text-xs rounded border" onClick={async () => {
+              setLoadingUdi(true);
+              const latest = await getLatestUdi();
+              setLoadingUdi(false);
+              if (latest && isFinite(latest.value) && latest.value > 0) setUdiTodayTxt(String(latest.value));
+            }} disabled={loadingUdi}>{loadingUdi ? '...' : 'Actualizar'}</button>
+          </div>
         </label>
         <label className="grid gap-1">
           <span className="text-xs text-neutral-600">Inflación anual (%)</span>
@@ -84,6 +119,10 @@ export default function BasicQuote() {
       </div>
 
       <div className="flex items-center gap-2">
+        <label className="inline-flex items-center gap-2">
+          <input type="checkbox" checked={autoDaily} onChange={(e)=> setAutoDaily(e.target.checked)} />
+          <span className="text-sm">Actualizar UDI automáticamente (diario)</span>
+        </label>
         <label className="inline-flex items-center gap-2">
           <input type="checkbox" checked={showValueAtYear} onChange={(e) => setShowValueAtYear(e.target.checked)} />
           <span className="text-sm">Mostrar Valor a año</span>
