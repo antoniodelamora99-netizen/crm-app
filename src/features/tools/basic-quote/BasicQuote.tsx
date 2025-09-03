@@ -6,7 +6,7 @@ import { getLatestUdi } from "@/lib/finance/udiProvider";
 
 export default function BasicQuote() {
   // Keep raw string inputs to control formatting and avoid browser quirks with leading zeros
-  const [udiTodayTxt, setUdiTodayTxt] = useState<string>("8.5");
+  const [udiTodayTxt, setUdiTodayTxt] = useState<string>("8.5000");
   const [inflPctTxt, setInflPctTxt] = useState<string>("4.5");
   const [yearsTxt, setYearsTxt] = useState<string>("10");
   const [periodicity, setPeriodicity] = useState<Periodicity>("Anual");
@@ -27,6 +27,10 @@ export default function BasicQuote() {
     // Edge: becomes empty after strip -> 0
     if (v === "") v = "0";
     return v;
+  };
+  const formatDecimal4 = (s: string) => {
+    const n = parseFloat(normDecimal(s));
+    return isFinite(n) ? n.toFixed(4) : "0.0000";
   };
   const normInteger = (s: string) => {
     let v = s.replace(/\s+/g, "");
@@ -51,11 +55,11 @@ export default function BasicQuote() {
   // Load last cached UDI or fetch latest on mount/each day when autoDaily is on
   useEffect(() => {
     const key = "tools.basicQuote.udi.latest";
-    const cached = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+  const cached = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
     if (cached) {
       try {
         const obj = JSON.parse(cached);
-        if (obj && typeof obj.value === 'number') setUdiTodayTxt(String(obj.value));
+    if (obj && typeof obj.value === 'number') setUdiTodayTxt(Number(obj.value).toFixed(4));
       } catch {}
     }
     if (!autoDaily) return;
@@ -65,7 +69,7 @@ export default function BasicQuote() {
       const latest = await getLatestUdi();
       setLoadingUdi(false);
       if (!cancelled && latest && isFinite(latest.value) && latest.value > 0) {
-        setUdiTodayTxt(String(latest.value));
+        setUdiTodayTxt(Number(latest.value).toFixed(4));
         try { window.localStorage.setItem(key, JSON.stringify(latest)); } catch {}
       }
     })();
@@ -82,12 +86,12 @@ export default function BasicQuote() {
         <label className="grid gap-1">
           <span className="text-xs text-neutral-600">Precio UDI hoy</span>
           <div className="flex items-center gap-2">
-            <input type="text" inputMode="decimal" value={udiTodayTxt} onChange={(e) => setUdiTodayTxt(normDecimal((e.target as HTMLInputElement).value))} onBlur={(e)=> setUdiTodayTxt(normDecimal((e.target as HTMLInputElement).value))} className="input flex-1" />
+            <input type="text" inputMode="decimal" value={udiTodayTxt} onChange={(e) => setUdiTodayTxt(normDecimal((e.target as HTMLInputElement).value))} onBlur={(e)=> setUdiTodayTxt(formatDecimal4((e.target as HTMLInputElement).value))} className="input flex-1" />
             <button type="button" className="px-2 py-1 text-xs rounded border" onClick={async () => {
               setLoadingUdi(true);
               const latest = await getLatestUdi();
               setLoadingUdi(false);
-              if (latest && isFinite(latest.value) && latest.value > 0) setUdiTodayTxt(String(latest.value));
+              if (latest && isFinite(latest.value) && latest.value > 0) setUdiTodayTxt(Number(latest.value).toFixed(4));
             }} disabled={loadingUdi}>{loadingUdi ? '...' : 'Actualizar'}</button>
           </div>
         </label>
