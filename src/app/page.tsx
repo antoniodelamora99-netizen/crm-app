@@ -10,5 +10,9 @@ export default function RootRedirect() {
     router.replace(id ? "/dashboard" : "/login");
   }, [router]);
 
-  return null;
+  return (
+    <div className="fixed bottom-2 right-2 text-[10px] text-neutral-400 select-none font-medium">
+      v0.0.1
+    </div>
+  );
 }

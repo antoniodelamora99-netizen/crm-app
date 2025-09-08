@@ -104,6 +104,9 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
           {/* Branding card (como en el diseño que te gustaba) */}
           <div className="px-5 pt-6 pb-5 border-b border-slate-200">
             <div className="text-2xl font-extrabold tracking-tight text-slate-900">GAMO</div>
+              <div className="flex items-end gap-2">
+                <span className="text-[11px] font-medium text-slate-400 mb-0.5 select-none">v0.0.1</span>
+              </div>
             <div className="text-[11px] tracking-wide text-slate-500 -mt-0.5">
               ASESORÍA INTEGRAL EN RIESGOS
             </div>
