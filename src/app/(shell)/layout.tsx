@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { getCurrentUser } from '@/lib/users'
@@ -37,6 +37,9 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   const [user, setUser] = useState<Current | null>(null)
   const [menuOpen, setMenuOpen] = useState(false) // mobile overlay nav
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false) // desktop collapse
+  // Gesture / drag state for mobile sidebar
+  const [drag, setDrag] = useState<{ opening: boolean; closing: boolean; delta: number }>({ opening: false, closing: false, delta: 0 })
+  const dragRef = useRef<{ startX: number; startY: number; active: boolean; mode: 'opening' | 'closing' | null }>({ startX: 0, startY: 0, active: false, mode: null })
   const router = useRouter()
   const pathname = usePathname()
 
@@ -103,6 +106,17 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {/* Gesture edge (abrir) - solo móvil cuando cerrado y no arrastrando */}
+      {!menuOpen && !drag.opening && (
+        <div
+          className="fixed left-0 top-0 h-full w-3 z-40 md:hidden touch-none"
+          onPointerDown={(e) => {
+            if (e.pointerType === 'mouse') return
+            dragRef.current = { startX: e.clientX, startY: e.clientY, active: true, mode: 'opening' }
+            setDrag({ opening: true, closing: false, delta: 0 })
+          }}
+        />
+      )}
       {/* Top bar mobile (hamburger a la izquierda) */}
       <div className="md:hidden relative flex items-center gap-3 pr-4 pl-14 py-3 border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-40">
         {/* Botón fijo extremo izquierdo - estilo limpio sin borde */}
@@ -121,11 +135,38 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         </div>
       </div>
       {/* Mobile overlay menu */}
-      {menuOpen && (
-        <div className="md:hidden fixed inset-0 z-50 menu-overlay-fade" onClick={() => setMenuOpen(false)}>
+      {(menuOpen || drag.opening || drag.closing) && (
+        <div
+          className="md:hidden fixed inset-0 z-50"
+          style={{
+            background: 'rgba(0,0,0,' + ((menuOpen ? 0.45 : 0.45 * (drag.delta / 288))) + ')',
+            transition: drag.opening || drag.closing ? 'none' : 'background .35s'
+          }}
+          onClick={() => { if (!drag.opening && !drag.closing) setMenuOpen(false) }}
+          onPointerDown={(e) => {
+            if (!menuOpen) return
+            // Inicia gesto de cierre solo si se toca dentro del panel (x < panel width)
+            if (e.clientX <= 288) {
+              dragRef.current = { startX: e.clientX, startY: e.clientY, active: true, mode: 'closing' }
+              setDrag({ opening: false, closing: true, delta: 0 })
+            }
+          }}
+        >
           <div
-            className="absolute left-0 top-0 h-full w-72 bg-white shadow-2xl border-r border-slate-200 flex flex-col menu-slide-in will-change-transform"
+            className={"absolute left-0 top-0 h-full w-72 bg-white shadow-2xl border-r border-slate-200 flex flex-col " + (drag.opening || drag.closing ? '' : 'menu-slide-in')}
             onClick={e => e.stopPropagation()}
+            style={{
+              transform: (() => {
+                if (drag.opening) {
+                  return `translateX(${Math.min(0, -288 + drag.delta)}px)`
+                }
+                if (drag.closing) {
+                  return `translateX(${-Math.min(drag.delta, 288)}px)`
+                }
+                return 'translateX(0)'
+              })(),
+              transition: (drag.opening || drag.closing) ? 'none' : 'transform .5s cubic-bezier(.22,.97,.36,1)'
+            }}
           >
             <div className="px-5 pt-6 pb-4 border-b border-slate-200">
               <div className="flex items-end gap-2">
@@ -159,6 +200,41 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
           </div>
         </div>
       )}
+      {/* Global pointer move/up listeners for drag (mobile only) */}
+      <div
+        className="hidden"
+        onPointerMove={(e) => {
+          if (!dragRef.current.active) return
+          const dx = e.clientX - dragRef.current.startX
+          const dy = e.clientY - dragRef.current.startY
+            // Si se desplaza más vertical que horizontal aborta
+          if (Math.abs(dy) > Math.abs(dx) * 1.2 && drag.delta === 0) {
+            dragRef.current.active = false
+            setDrag({ opening: false, closing: false, delta: 0 })
+            return
+          }
+          if (dragRef.current.mode === 'opening') {
+            if (dx < 0) return // no arrastrar hacia la izquierda para abrir
+            setDrag(s => ({ ...s, delta: Math.min(288, dx) }))
+          } else if (dragRef.current.mode === 'closing') {
+            if (dx > 0) return
+            setDrag(s => ({ ...s, delta: Math.min(288, -dx) }))
+          }
+        }}
+        onPointerUp={() => {
+          if (!dragRef.current.active) return
+            const { mode } = dragRef.current
+            dragRef.current.active = false
+            const committed = drag.delta > 80 // umbral
+            if (mode === 'opening') {
+              if (committed) setMenuOpen(true)
+              setDrag({ opening: false, closing: false, delta: 0 })
+            } else if (mode === 'closing') {
+              if (committed) setMenuOpen(false)
+              setDrag({ opening: false, closing: false, delta: 0 })
+            }
+        }}
+      />
       <div className="flex">
         {/* SIDEBAR desktop (collapsible) */}
         <aside
