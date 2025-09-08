@@ -124,3 +124,17 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* --- Mobile menu custom animations (Apple-like subtle spring) --- */
+@keyframes menuOverlayFade {
+  0% { opacity: 0; }
+  100% { opacity: 0.45; }
+}
+@keyframes menuSlideIn {
+  0% { transform: translateX(-100%) scale(.98); }
+  55% { transform: translateX(4%) scale(1.01); }
+  75% { transform: translateX(-2%) scale(.999); }
+  100% { transform: translateX(0) scale(1); }
+}
+.menu-overlay-fade { background: rgba(0,0,0,.45); animation: menuOverlayFade .38s cubic-bezier(.4,.0,.2,1); }
+.menu-slide-in { animation: menuSlideIn .5s cubic-bezier(.22,.97,.36,1); }

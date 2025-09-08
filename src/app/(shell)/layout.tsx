@@ -104,14 +104,16 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Top bar mobile (hamburger a la izquierda) */}
-      <div className="md:hidden relative flex items-center gap-3 pr-4 pl-12 py-3 border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-40">
-        {/* Botón fijo extremo izquierdo */}
+      <div className="md:hidden relative flex items-center gap-3 pr-4 pl-14 py-3 border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-40">
+        {/* Botón fijo extremo izquierdo - estilo limpio sin borde */}
         <button
           onClick={() => setMenuOpen(o => !o)}
           aria-label={menuOpen ? "Cerrar menú" : "Abrir menú"}
-          className="absolute left-2 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center rounded-md border border-slate-300 text-slate-600 active:scale-95 transition bg-white"
+          className="absolute left-2 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center rounded-xl text-slate-700 active:scale-90 transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/50 hover:bg-slate-100/70"
         >
-          {menuOpen ? <X size={20}/> : <Menu size={20} />}
+          <span className={['transition-all duration-300 ease-out will-change-transform', menuOpen ? 'scale-90 rotate-90 opacity-80' : ''].join(' ')}>
+            {menuOpen ? <X size={22}/> : <Menu size={22} />}
+          </span>
         </button>
         <div className="flex items-end gap-2">
           <span className="text-xl font-extrabold tracking-tight text-slate-900">GAMO</span>
@@ -120,9 +122,9 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
       </div>
       {/* Mobile overlay menu */}
       {menuOpen && (
-        <div className="md:hidden fixed inset-0 z-50 bg-black/40" onClick={() => setMenuOpen(false)}>
+        <div className="md:hidden fixed inset-0 z-50 menu-overlay-fade" onClick={() => setMenuOpen(false)}>
           <div
-            className="absolute left-0 top-0 h-full w-72 bg-white shadow-xl border-r border-slate-200 flex flex-col"
+            className="absolute left-0 top-0 h-full w-72 bg-white shadow-2xl border-r border-slate-200 flex flex-col menu-slide-in will-change-transform"
             onClick={e => e.stopPropagation()}
           >
             <div className="px-5 pt-6 pb-4 border-b border-slate-200">
