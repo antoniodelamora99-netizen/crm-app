@@ -18,7 +18,9 @@ import {
   BookOpenText,
   Wrench,
   Menu,
-  X
+  X,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 
 type Current = { id: string; role: 'asesor' | 'gerente' | 'promotor'; name: string }
@@ -33,7 +35,8 @@ type MenuItem = {
 
 export default function ShellLayout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<Current | null>(null)
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false) // mobile overlay nav
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false) // desktop collapse
   const router = useRouter()
   const pathname = usePathname()
 
@@ -100,19 +103,19 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Top bar mobile */}
-      <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-40">
+      {/* Top bar mobile (hamburger a la izquierda) */}
+      <div className="md:hidden flex items-center gap-3 pr-4 pl-2 py-3 border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-40">
+        <button
+          onClick={() => setMenuOpen(o => !o)}
+          aria-label={menuOpen ? "Cerrar menú" : "Abrir menú"}
+          className="p-2 -ml-1 rounded-md border border-slate-300 text-slate-600 active:scale-95 transition"
+        >
+          {menuOpen ? <X size={18}/> : <Menu size={18} />}
+        </button>
         <div className="flex items-end gap-2">
           <span className="text-xl font-extrabold tracking-tight text-slate-900">GAMO</span>
           <span className="text-[10px] font-medium text-slate-400 mb-0.5 select-none">v{APP_VERSION}</span>
         </div>
-        <button
-          onClick={() => setMenuOpen(o => !o)}
-          aria-label="Abrir menú"
-          className="p-2 rounded-md border border-slate-300 text-slate-600 active:scale-95 transition"
-        >
-          {menuOpen ? <X size={18}/> : <Menu size={18} />}
-        </button>
       </div>
       {/* Mobile overlay menu */}
       {menuOpen && (
@@ -154,46 +157,65 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         </div>
       )}
       <div className="flex">
-        {/* SIDEBAR desktop */}
-        <aside className="hidden md:block sticky top-0 h-screen w-72 shrink-0 border-r border-slate-200 bg-white/90 backdrop-blur">
+        {/* SIDEBAR desktop (collapsible) */}
+        <aside
+          className={[
+            "hidden md:flex sticky top-0 h-screen border-r border-slate-200 bg-white/90 backdrop-blur flex-col transition-all duration-200",
+            sidebarCollapsed ? "w-16" : "w-72"
+          ].join(" ")}
+        >
           {/* Branding card (como en el diseño que te gustaba) */}
-          <div className="px-5 pt-6 pb-5 border-b border-slate-200">
-            <div className="flex items-end gap-2">
-              <div className="text-2xl font-extrabold tracking-tight text-slate-900">GAMO</div>
-              <span
-                className="text-[11px] font-medium text-slate-400 mb-0.5 select-none"
-                title={`Versión ${APP_VERSION} • ${BUILD_COMMIT_SHORT} • ${new Date(BUILD_DATE_ISO).toLocaleString()}`}
-              >v{APP_VERSION} · {BUILD_COMMIT_SHORT}</span>
+          <div className={"relative border-b border-slate-200 " + (sidebarCollapsed ? "px-2 pt-5 pb-4" : "px-5 pt-6 pb-5")}>
+            <div className={"flex items-end gap-2 " + (sidebarCollapsed ? "justify-center" : "")}>
+              <div className={"font-extrabold tracking-tight text-slate-900 " + (sidebarCollapsed ? "text-xl" : "text-2xl")}>G</div>
+              {!sidebarCollapsed && (
+                <>
+                  <div className="text-2xl font-extrabold tracking-tight text-slate-900">AMO</div>
+                  <span
+                    className="text-[11px] font-medium text-slate-400 mb-0.5 select-none"
+                    title={`Versión ${APP_VERSION} • ${BUILD_COMMIT_SHORT} • ${new Date(BUILD_DATE_ISO).toLocaleString()}`}
+                  >v{APP_VERSION}</span>
+                </>
+              )}
             </div>
-            <div className="text-[11px] tracking-wide text-slate-500 -mt-0.5">
-              ASESORÍA INTEGRAL EN RIESGOS
-            </div>
-            <div className="mt-1 text-[10px] text-slate-400">
-              {new Date(BUILD_DATE_ISO).toLocaleDateString('es-MX', { year: 'numeric', month: '2-digit', day: '2-digit' })}
-              {" "}
-              {new Date(BUILD_DATE_ISO).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
-            </div>
+            {!sidebarCollapsed && (
+              <>
+                <div className="text-[11px] tracking-wide text-slate-500 -mt-0.5">ASESORÍA INTEGRAL EN RIESGOS</div>
+                <div className="mt-1 text-[10px] text-slate-400">
+                  {new Date(BUILD_DATE_ISO).toLocaleDateString('es-MX', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                  {" "}
+                  {new Date(BUILD_DATE_ISO).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </>
+            )}
+            <button
+              onClick={() => setSidebarCollapsed(c => !c)}
+              aria-label={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
+              className="absolute -right-3 top-6 hidden md:inline-flex h-6 w-6 items-center justify-center rounded-full border bg-white text-slate-500 shadow-sm hover:text-slate-700 hover:bg-slate-50 transition"
+            >
+              {sidebarCollapsed ? <ChevronRight size={16}/> : <ChevronLeft size={16}/>}
+            </button>
+          </div>
 
             {/* Usuario compacto */}
-            <div className="mt-4 rounded-lg bg-slate-50 px-3 py-2">
-              <div className="truncate text-[13px] font-semibold text-slate-800">{user.name}</div>
-              <div className="text-[11px] uppercase tracking-wide text-slate-500">{user.role}</div>
+          <div className={"mt-4 rounded-lg bg-slate-50 " + (sidebarCollapsed ? "mx-2 px-1 py-2" : "px-3 py-2")}> 
+            <div className="truncate text-[13px] font-semibold text-slate-800" title={user.name}>{sidebarCollapsed ? user.name.split(' ')[0] : user.name}</div>
+            {!sidebarCollapsed && <div className="text-[11px] uppercase tracking-wide text-slate-500">{user.role}</div>}
+            {!sidebarCollapsed && (
               <button
                 onClick={logout}
                 className="mt-2 text-[12px] font-medium text-slate-500 underline underline-offset-4 hover:text-rose-600"
                 aria-label="Cerrar sesión"
-              >
-                Cerrar sesión
-              </button>
-            </div>
+              >Cerrar sesión</button>
+            )}
           </div>
 
           {/* Navegación */}
-          <nav className="px-3 py-4 space-y-1 overflow-auto">
+          <nav className={"py-4 overflow-auto flex-1 space-y-1 " + (sidebarCollapsed ? "px-1" : "px-3") }>
             {menu.filter((m) => m.show).map((m) => (
-              <Link key={m.href} href={m.href} className={itemClass(m.href)}>
+              <Link key={m.href} href={m.href} className={itemClass(m.href)} title={sidebarCollapsed ? m.label : undefined}>
                 <m.icon size={18} className="shrink-0" />
-                <span>{m.label}</span>
+                {!sidebarCollapsed && <span>{m.label}</span>}
               </Link>
             ))}
           </nav>
@@ -202,6 +224,16 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         {/* CONTENIDO */}
         <main className="min-h-screen flex-1">
           <div className="mx-auto max-w-7xl p-4 md:p-6 lg:p-8">{children}</div>
+          {/* Floating toggle for desktop when collapsed (optional show when collapsed) */}
+          {sidebarCollapsed && (
+            <button
+              onClick={() => setSidebarCollapsed(false)}
+              aria-label="Expandir menú"
+              className="hidden md:flex fixed bottom-4 left-4 h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg ring-2 ring-white/40 hover:bg-slate-800"
+            >
+              <ChevronRight size={18}/>
+            </button>
+          )}
         </main>
       </div>
     </div>
