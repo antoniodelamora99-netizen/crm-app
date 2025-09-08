@@ -104,13 +104,14 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Top bar mobile (hamburger a la izquierda) */}
-      <div className="md:hidden flex items-center gap-3 pr-4 pl-2 py-3 border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-40">
+      <div className="md:hidden relative flex items-center gap-3 pr-4 pl-12 py-3 border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-40">
+        {/* Botón fijo extremo izquierdo */}
         <button
           onClick={() => setMenuOpen(o => !o)}
           aria-label={menuOpen ? "Cerrar menú" : "Abrir menú"}
-          className="p-2 -ml-1 rounded-md border border-slate-300 text-slate-600 active:scale-95 transition"
+          className="absolute left-2 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center rounded-md border border-slate-300 text-slate-600 active:scale-95 transition bg-white"
         >
-          {menuOpen ? <X size={18}/> : <Menu size={18} />}
+          {menuOpen ? <X size={20}/> : <Menu size={20} />}
         </button>
         <div className="flex items-end gap-2">
           <span className="text-xl font-extrabold tracking-tight text-slate-900">GAMO</span>
