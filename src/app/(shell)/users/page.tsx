@@ -101,7 +101,7 @@ export default function UsersPage() {
                   <td className="p-3">{u.name}</td>
                   <td className="p-3">{u.username}</td>
                   <td className="p-3">
-                    <Badge className={u.role === "promotor" ? "bg-violet-100 text-violet-800" : u.role === "gerente" ? "bg-sky-100 text-sky-800" : "bg-emerald-100 text-emerald-800"}>
+                    <Badge className={u.role === "promotor" ? "bg-neutral-900 text-white" : u.role === "gerente" ? "bg-neutral-700 text-white" : "bg-neutral-500 text-white"}>
                       {u.role}
                     </Badge>
                   </td>

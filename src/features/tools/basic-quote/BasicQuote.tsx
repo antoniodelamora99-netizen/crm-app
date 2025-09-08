@@ -52,14 +52,16 @@ export default function BasicQuote() {
   const [autoDaily, setAutoDaily] = useState<boolean>(true);
   const [loadingUdi, setLoadingUdi] = useState<boolean>(false);
 
+  const cacheKey = "tools.basicQuote.udi.latest";
+  const [udiMeta, setUdiMeta] = useState<{date?: string; source?: string} | null>(null);
   // Load last cached UDI or fetch latest on mount/each day when autoDaily is on
   useEffect(() => {
-    const key = "tools.basicQuote.udi.latest";
-  const cached = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+    const cached = typeof window !== 'undefined' ? window.localStorage.getItem(cacheKey) : null;
     if (cached) {
       try {
         const obj = JSON.parse(cached);
-    if (obj && typeof obj.value === 'number') setUdiTodayTxt(Number(obj.value).toFixed(4));
+        if (obj && typeof obj.value === 'number') setUdiTodayTxt(Number(obj.value).toFixed(4));
+        setUdiMeta({ date: obj?.date, source: obj?.source });
       } catch {}
     }
     if (!autoDaily) return;
@@ -70,7 +72,8 @@ export default function BasicQuote() {
       setLoadingUdi(false);
       if (!cancelled && latest && isFinite(latest.value) && latest.value > 0) {
         setUdiTodayTxt(Number(latest.value).toFixed(4));
-        try { window.localStorage.setItem(key, JSON.stringify(latest)); } catch {}
+        setUdiMeta({ date: latest.date, source: latest.source });
+        try { window.localStorage.setItem(cacheKey, JSON.stringify(latest)); } catch {}
       }
     })();
     return () => { cancelled = true; };
@@ -91,9 +94,24 @@ export default function BasicQuote() {
               setLoadingUdi(true);
               const latest = await getLatestUdi();
               setLoadingUdi(false);
-              if (latest && isFinite(latest.value) && latest.value > 0) setUdiTodayTxt(Number(latest.value).toFixed(4));
+              if (latest && isFinite(latest.value) && latest.value > 0) {
+                setUdiTodayTxt(Number(latest.value).toFixed(4));
+                setUdiMeta({ date: latest.date, source: latest.source });
+                try { window.localStorage.setItem(cacheKey, JSON.stringify(latest)); } catch {}
+              }
             }} disabled={loadingUdi}>{loadingUdi ? '...' : 'Actualizar'}</button>
           </div>
+          {/* fuente y fecha normalizada */}
+          {udiMeta && (udiMeta.date || udiMeta.source) && (
+            <small className="text-[11px] text-neutral-500 mt-1 block">
+              {(() => {
+                const d = (udiMeta.date || "").trim();
+                const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                const shown = m ? `${m[3]}/${m[2]}/${m[1]}` : d; // prefer dd/mm/yyyy
+                return `Fuente: ${udiMeta.source || ""}${shown ? ` • ${shown}` : ""}`;
+              })()}
+            </small>
+          )}
         </label>
         <label className="grid gap-1">
           <span className="text-xs text-neutral-600">Inflación anual (%)</span>

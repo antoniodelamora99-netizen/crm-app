@@ -10,7 +10,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 
 import {
-  Client, Policy, Activity, uid,
+  Client, Policy, Activity, uid, User,
 } from "@/lib/types";
 import { repo, LS_KEYS } from "@/lib/storage";
 import { getCurrentUser, filterByScope, getUsers, visibleOwnerIdsFor } from "@/lib/users";
@@ -19,6 +19,13 @@ import { Calendar, dateFnsLocalizer, Views, View } from "react-big-calendar";
 import { format, parse, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfDay, endOfDay, addHours, addMinutes, addMonths, endOfMonth as endOfMonthDF, getDay } from "date-fns";
 import { es } from "date-fns/locale/es";
 import "react-big-calendar/lib/css/react-big-calendar.css";
+
+/* ===== Tipos locales extendidos ===== */
+interface ActivityWithShare extends Activity { sharedWith?: string[] }
+interface ReminderResource { policyId: string; isReminder: true; color?: Activity["color"]; }
+type ResourceType = ActivityWithShare | ReminderResource;
+interface CalendarEvent { id: string; title: string; start: Date; end: Date; resource: ResourceType; color?: Activity["color"]; }
+interface ToolbarProps { label: string; onNavigate: (action: 'TODAY'|'PREV'|'NEXT'|Date) => void; onView: (view: View) => void; }
 
 /* ===== Repos ===== */
 const ClientsRepo = repo<Client>(LS_KEYS.clients);
@@ -29,7 +36,8 @@ const ActivitiesRepo = repo<Activity>(LS_KEYS.activities);
 const ALL_USERS = getUsers();
 
 /* ===== Localizer ===== */
-const locales = { es } as any;
+// date-fns locales don't export a common Locale type here; infer via typeof es
+const locales: Record<string, typeof es> = { es };
 const localizer = dateFnsLocalizer({
   format,
   parse,
@@ -76,13 +84,13 @@ function toIsoOr(prev: string | undefined, value: string) {
 export default // NOTE: moved to src/features/activities/ActivitiesPage.tsx (kept temporarily as _OLD to avoid breakage)
 function ActivitiesPage_OLD() {
   const currentUser = getCurrentUser();
-  const user = currentUser ?? ({ id: "__anon__", role: "asesor", name: "Invitado", username: "", password: "" } as any);
-  const [rows, setRows] = useState<Activity[]>(ActivitiesRepo.list());
+  const user: User = currentUser ?? ({ id: "__anon__", role: "asesor", name: "Invitado", username: "", password: "" });
+  const [rows, setRows] = useState<ActivityWithShare[]>(ActivitiesRepo.list() as ActivityWithShare[]);
   const clients = ClientsRepo.list();
   const policies = PoliciesRepo.list();
 
-  const visibleClients = useMemo(() => filterByScope(clients, user, c => (c as Client).ownerId), [clients, user]);
-  const visiblePolicies = useMemo(() => filterByScope(policies, user, p => (p as Policy).ownerId), [policies, user]);
+  const visibleClients = useMemo(() => filterByScope(clients, user, c => c.ownerId), [clients, user]);
+  const visiblePolicies = useMemo(() => filterByScope(policies, user, p => p.ownerId), [policies, user]);
 
   // Usuarios del equipo disponibles para compartir (según jerarquía)
   const teamUsers = useMemo(() => {
@@ -92,20 +100,20 @@ function ActivitiesPage_OLD() {
   }, [user]);
 
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<Activity | null>(null);
+  const [draft, setDraft] = useState<ActivityWithShare | null>(null);
   const [calView, setCalView] = useState<View>(Views.DAY);
   const [calDate, setCalDate] = useState<Date>(new Date());
   const [shareMode, setShareMode] = useState<"none"|"all"|"custom">("none");
   const [shareFilter, setShareFilter] = useState("");
   useEffect(() => {
     if (!draft || user.role === "asesor") return;
-    const list: string[] = ((draft as any)?.sharedWith as string[]) || [];
+  const list: string[] = draft?.sharedWith || [];
     if (list.length === 0) setShareMode("none");
     else if (list.length >= teamUsers.length) setShareMode("all");
     else setShareMode("custom");
   }, [draft, teamUsers.length, user.role]);
 
-  useEffect(() => { ActivitiesRepo.saveAll(rows); }, [rows]);
+  useEffect(() => { ActivitiesRepo.saveAll(rows as Activity[]); }, [rows]);
 
   /* Rango visible del calendario */
   const viewRange = useMemo(() => {
@@ -116,8 +124,8 @@ function ActivitiesPage_OLD() {
   }, [calDate, calView]);
 
   /* Recordatorios de pago (a partir de pólizas) */
-  function makePaymentReminders(pols: Policy[], start: Date, end: Date) {
-    const out: any[] = [];
+  function makePaymentReminders(pols: Policy[], start: Date, end: Date): CalendarEvent[] {
+    const out: CalendarEvent[] = [];
     for (const p of pols) {
       if (!p.fechaPago) continue;
       const freq = (p.formaPago || "Mensual").toLowerCase();
@@ -140,7 +148,7 @@ function ActivitiesPage_OLD() {
           title: `Pago póliza ${p.plan || ""} — ${clientName}`.trim(),
           start: startAt,
           end: endAt,
-          resource: { policyId: p.id, isReminder: true },
+          resource: { policyId: p.id, isReminder: true, color: "amarillo" },
           color: "amarillo",
         });
       }
@@ -150,14 +158,14 @@ function ActivitiesPage_OLD() {
 
   const visibleRows = useMemo(() => {
     const owned = filterByScope(rows, user, r => r.ownerId);
-    const shared = rows.filter(r => Array.isArray((r as any).sharedWith) && (r as any).sharedWith.includes(user.id));
+    const shared = rows.filter(r => Array.isArray(r.sharedWith) && (r.sharedWith as string[]).includes(user.id));
     const map = new Map(owned.map(x => [x.id, x]));
-    for (const r of shared) map.set(r.id, r as Activity);
+    for (const r of shared) map.set(r.id, r);
     return Array.from(map.values());
   }, [rows, user]);
 
-  const events = useMemo(() => {
-    const activityEvents = visibleRows.map(r => {
+  const events: CalendarEvent[] = useMemo(() => {
+    const activityEvents: CalendarEvent[] = visibleRows.map(r => {
       const start = new Date(r.fechaHora);
       const end = r.fechaHoraFin ? new Date(r.fechaHoraFin) : addHours(start, 1);
       return ({
@@ -174,7 +182,7 @@ function ActivitiesPage_OLD() {
   }, [visibleRows, visibleClients, visiblePolicies, viewRange]);
 
   /* Toolbar estilo Apple */
-  function Toolbar({ label, onNavigate, onView }: any) {
+  function Toolbar({ label, onNavigate, onView }: ToolbarProps) {
     return (
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
@@ -195,8 +203,8 @@ function ActivitiesPage_OLD() {
   }
 
   /* Evento con solo hora de inicio (no fin) */
-  const EventCell = ({ event }: any) => {
-    const start: Date = event.start instanceof Date ? event.start : new Date(event.start);
+  const EventCell: React.FC<{ event: CalendarEvent }> = ({ event }) => {
+    const start: Date = event.start;
     const title: string = event.title;
     const time = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -208,8 +216,8 @@ function ActivitiesPage_OLD() {
     return <div className="leading-tight"><span className="font-semibold">{time}</span> {title}</div>;
   };
 
-  const eventPropGetter = (event: any) => {
-    const raw: any = (event.color ?? event?.resource?.color) as Activity["color"] | undefined;
+  const eventPropGetter = (event: CalendarEvent) => {
+    const raw = (event.color ?? (event.resource as ResourceType)?.color) as Activity["color"] | undefined;
     const key = (typeof raw === "string" ? raw.toLowerCase() : undefined) as keyof typeof colorMap | undefined;
     const bg = (key && colorMap[key]) ? colorMap[key] : "#0ea5e9";
     return { style: { backgroundColor: bg, borderColor: bg, color: "white" } };
@@ -219,7 +227,7 @@ function ActivitiesPage_OLD() {
   const onSelectSlot = ({ start }: { start: Date }) => {
     const s = new Date(start);
     const e = addHours(s, 1);
-    const base: Activity = {
+    const base: ActivityWithShare = {
       id: uid(),
       ownerId: user.id,
       clienteId: (visibleClients[0]?.id ?? clients[0]?.id ?? ""),
@@ -235,24 +243,24 @@ function ActivitiesPage_OLD() {
   };
 
   /* Editar evento existente (no recordatorios) */
-  const onSelectEvent = (e: any) => {
-    if (e?.resource?.isReminder) {
+  const onSelectEvent = (e: CalendarEvent) => {
+    if ((e.resource as ReminderResource).isReminder) {
       alert("Este es un recordatorio de pago generado automáticamente. Para cambiarlo, edita la póliza.");
       return;
     }
-    const start: Date = e?.start instanceof Date ? e.start : new Date(e?.start);
-    const end: Date = e?.end instanceof Date ? e.end : (e?.resource?.fechaHoraFin ? new Date(e.resource.fechaHoraFin) : addHours(start,1));
-    const base: Activity = { ...(e.resource as Activity), fechaHora: start.toISOString(), fechaHoraFin: end.toISOString() } as Activity;
-    (base as any).sharedWith = (e.resource as any)?.sharedWith || [];
+    const start: Date = e.start;
+    const end: Date = e.end instanceof Date ? e.end : addHours(start,1);
+    const resource = e.resource as ActivityWithShare;
+    const base: ActivityWithShare = { ...resource, fechaHora: start.toISOString(), fechaHoraFin: (resource.fechaHoraFin ? end.toISOString() : end.toISOString()) };
+    base.sharedWith = resource.sharedWith || [];
     setDraft(base);
     setOpen(true);
   };
 
-  const saveDraft = (a: Activity) => {
+  const saveDraft = (a: ActivityWithShare) => {
     const start = new Date(a.fechaHora);
     const end = a.fechaHoraFin ? new Date(a.fechaHoraFin) : addHours(start, 1);
-    const fixed: Activity = { ...a, fechaHora: start.toISOString(), fechaHoraFin: end > start ? end.toISOString() : addHours(start, 1).toISOString() };
-    (fixed as any).sharedWith = (a as any).sharedWith || [];
+    const fixed: ActivityWithShare = { ...a, fechaHora: start.toISOString(), fechaHoraFin: end > start ? end.toISOString() : addHours(start, 1).toISOString(), sharedWith: a.sharedWith || [] };
     setRows(prev => {
       const exists = prev.some(x => x.id === fixed.id);
       return exists ? prev.map(x => x.id === fixed.id ? fixed : x) : [fixed, ...prev];
@@ -261,8 +269,8 @@ function ActivitiesPage_OLD() {
     setDraft(null);
   };
 
-  const canDelete = (a: Activity) => a.ownerId === user.id;
-  const deleteDraft = (a: Activity) => {
+  const canDelete = (a: ActivityWithShare) => a.ownerId === user.id;
+  const deleteDraft = (a: ActivityWithShare) => {
     if (!canDelete(a)) {
       alert("Solo la persona que creó el evento puede eliminarlo.");
       return;
@@ -287,7 +295,7 @@ function ActivitiesPage_OLD() {
             fechaHora: new Date().toISOString(),
             fechaHoraFin: addHours(new Date(),1).toISOString(),
             realizada: false, generoCierre: false, color: "verde",
-          } as Activity);
+          });
           setOpen(true);
         }}>
           Nueva
@@ -331,7 +339,7 @@ function ActivitiesPage_OLD() {
               eventTimeRangeStartFormat: () => "",
               eventTimeRangeEndFormat: () => "",
             }}
-            components={{ event: EventCell, toolbar: Toolbar }}
+            components={{ event: EventCell as any, toolbar: Toolbar as any }}
             showMultiDayTimes
             drilldownView={Views.DAY}
           />
@@ -406,14 +414,14 @@ function ActivitiesPage_OLD() {
                 <Input
                   type="datetime-local"
                   value={toLocalInput(draft?.fechaHora)}
-                  onChange={(e) => setDraft((p) => ({ ...(p as Activity), fechaHora: toIsoOr(p?.fechaHora, (e.target as HTMLInputElement).value) as string }))}
+                  onChange={(e) => setDraft((p) => p ? ({ ...p, fechaHora: toIsoOr(p?.fechaHora, (e.target as HTMLInputElement).value) as string }) : p)}
                 />
               </Field>
               <Field label="Hora fin">
                 <Input
                   type="datetime-local"
                   value={toLocalInput(draft?.fechaHoraFin || (draft?.fechaHora ? new Date(new Date(draft.fechaHora).getTime() + 60*60*1000).toISOString() : undefined))}
-                  onChange={(e) => setDraft((p) => ({ ...(p as Activity), fechaHoraFin: toIsoOr(p?.fechaHoraFin, (e.target as HTMLInputElement).value) as string }))}
+                  onChange={(e) => setDraft((p) => p ? ({ ...p, fechaHoraFin: toIsoOr(p?.fechaHoraFin, (e.target as HTMLInputElement).value) as string }) : p)}
                 />
               </Field>
               <Field label="Color">
@@ -439,9 +447,9 @@ function ActivitiesPage_OLD() {
                           setShareMode(mode);
                           if (!draft) return;
                           if (mode === "none") {
-                            setDraft({ ...(draft as Activity), ...( { sharedWith: [] } as any) });
+                            setDraft({ ...draft, sharedWith: [] });
                           } else if (mode === "all") {
-                            setDraft({ ...(draft as Activity), ...( { sharedWith: teamUsers.map(u => u.id) } as any) });
+                            setDraft({ ...draft, sharedWith: teamUsers.map(u => u.id) });
                           }
                         }}>
                           <SelectTrigger><SelectValue placeholder="Selecciona modo"/></SelectTrigger>
@@ -460,18 +468,18 @@ function ActivitiesPage_OLD() {
                             <Input placeholder="Buscar usuario…" value={shareFilter} onChange={e => setShareFilter((e.target as HTMLInputElement).value)} className="h-8" />
                             <Button type="button" variant="secondary" size="sm" onClick={() => {
                               if (!draft) return;
-                              setDraft({ ...(draft as Activity), ...( { sharedWith: teamUsers.map(u => u.id) } as any) });
+                              setDraft({ ...draft, sharedWith: teamUsers.map(u => u.id) });
                             }}>Todos</Button>
                             <Button type="button" variant="outline" size="sm" onClick={() => {
                               if (!draft) return;
-                              setDraft({ ...(draft as Activity), ...( { sharedWith: [] } as any) });
+                              setDraft({ ...draft, sharedWith: [] });
                             }}>Nadie</Button>
                           </div>
                           <div className="flex flex-wrap gap-3 p-2 border rounded-md max-h-48 overflow-auto">
                             {teamUsers
                               .filter(u => u.name.toLowerCase().includes(shareFilter.toLowerCase()))
                               .map(u => {
-                                const list: string[] = ((draft as any)?.sharedWith as string[]) || [];
+                                const list: string[] = draft?.sharedWith || [];
                                 const checked = list.includes(u.id);
                                 return (
                                   <label key={u.id} className="inline-flex items-center gap-2 text-sm">
@@ -482,7 +490,7 @@ function ActivitiesPage_OLD() {
                                       onChange={(e) => {
                                         const set = new Set<string>(list);
                                         e.currentTarget.checked ? set.add(u.id) : set.delete(u.id);
-                                        setDraft({ ...(draft as Activity), ...( { sharedWith: Array.from(set) } as any) });
+                                        setDraft({ ...draft, sharedWith: Array.from(set) });
                                       }}
                                     />
                                     <span>{u.name}</span>

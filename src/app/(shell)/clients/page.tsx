@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { z } from "zod";
 import { Plus, ArrowUpDown } from "lucide-react";
 
-import type { Client } from "@/lib/types";
+import type { Client, Policy } from "@/lib/types";
 import { uid } from "@/lib/types";
 import { repo, LS_KEYS } from "@/lib/storage";
 import { getCurrentUser, filterByScope } from "@/lib/users";
@@ -32,6 +32,7 @@ import { setContactado } from "@/features/clients/utils/contactado";
 
 // Repos locales
 const ClientsRepo = repo<Client>(LS_KEYS.clients);
+const PoliciesRepo = repo<Policy>(LS_KEYS.policies);
 
 // Helpers
 const toAge = (iso?: string) => {
@@ -43,11 +44,18 @@ const toAge = (iso?: string) => {
 
 const clientStatusClass: Record<NonNullable<Client["estatus"]>, string> = {
   Prospecto: "bg-sky-100 text-sky-800",
+  Interesado: "bg-amber-100 text-amber-800",
   Cliente: "bg-emerald-100 text-emerald-800",
   Inactivo: "bg-neutral-200 text-neutral-800",
-  Referido: "bg-violet-100 text-violet-800",
+  Referido: "bg-neutral-200 text-neutral-800",
   "No interesado": "bg-rose-100 text-rose-800",
 };
+
+// Mapeo para upsert en Supabase (normaliza nullables y fechas)
+interface ClientDBRow extends Omit<Client, "email" | "contactado_fecha"> {
+  email: string | null;
+  contactado_fecha: string | null;
+}
 
 // Formatea teléfono con espacios (ej. 55 1234 5678)
 function fmtPhone(v?: string) {
@@ -75,9 +83,8 @@ function ClientsPage() {
   }, [rows]);
 
   // Alcance por usuario (asesor/gerente/promotor)
-  const scoped = useMemo(() => {
-    const base = current ? filterByScope(rows, current, r => (r as Client).ownerId) : rows;
-    return base;
+  const scoped = useMemo<Client[]>(() => {
+    return current ? filterByScope<Client>(rows, current, (r) => r.ownerId) : rows;
   }, [rows, current]);
 
   // Búsqueda + orden
@@ -182,7 +189,7 @@ function ClientsPage() {
             onChange={(e) => setQ((e.target as HTMLInputElement).value)}
             className="w-64"
           />
-          <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
             <SelectTrigger className="w-48"><SelectValue placeholder="Ordenar por"/></SelectTrigger>
             <SelectContent>
               <SelectItem value="created">Fecha de creación</SelectItem>
@@ -221,6 +228,7 @@ function ClientsPage() {
                 <th className="text-left p-3">Teléfono</th>
                 <th className="text-left p-3">Email</th>
                 <th className="text-left p-3">Estatus</th>
+                <th className="text-left p-3">Pólizas</th>
                 <th className="text-left p-3">Edad</th>
                 <th className="text-left p-3">Creado</th>
                 <th className="text-left p-3">Contactado</th>
@@ -238,6 +246,7 @@ function ClientsPage() {
                       {c.estatus || "Prospecto"}
                     </Badge>
                   </td>
+                  <td className="p-3"><PoliciesSummaryHover clientId={c.id} /></td>
                   <td className="p-3">{toAge(c.fechaNacimiento) ?? "-"}</td>
                   <td className="p-3">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "-"}</td>
                   <td className="p-3">
@@ -255,7 +264,7 @@ function ClientsPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td className="p-4 text-sm text-muted-foreground" colSpan={8}>Sin resultados</td>
+                  <td className="p-4 text-sm text-muted-foreground" colSpan={9}>Sin resultados</td>
                 </tr>
               )}
             </tbody>
@@ -313,20 +322,21 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
     dependientes: z.number().optional().nullable(),
     fumador: z.boolean().optional().nullable(),
     fuente: z.string().optional().nullable(),
-  estatus: z.enum(["Prospecto","Cliente","Inactivo","Referido","No interesado"]).default("Prospecto"),
+  estatus: z.enum(["Prospecto","Interesado","Cliente","Inactivo","Referido","No interesado"]).default("Prospecto"),
     ultimoContacto: z.string().optional().nullable(),
   notas: z.string().optional().nullable(),
     anfRealizado: z.boolean().optional().nullable(),
     anfFecha: z.string().optional().nullable(),
     createdAt: z.string().optional().nullable(),
   contactado: z.boolean().default(false),
+  // A nivel de formulario manejamos Date; en el modelo puede almacenarse Date o string
   contactado_fecha: z.date().nullable().optional(),
   });
   const [form, setForm] = useState<Client>(
     initial || { id: uid(), nombre: "", estatus: "Prospecto", createdAt: new Date().toISOString(), contactado: false, notas: "" }
   );
   useEffect(() => { if (initial) setForm(initial); }, [initial]);
-  const set = (k: keyof Client, v: any) => setForm((prev) => ({ ...prev, [k]: v }));
+  const set = <K extends keyof Client>(k: K, v: Client[K]) => setForm((prev) => ({ ...prev, [k]: v }));
   const isEdit = Boolean(initial);
 
   return (
@@ -339,7 +349,7 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
         <Field label="Correo electrónico"><Input value={form.email || ""} onChange={(e) => set("email", (e.target as HTMLInputElement).value)} /></Field>
         <Field label="Fecha de nacimiento"><Input type="date" value={form.fechaNacimiento || ""} onChange={(e) => set("fechaNacimiento", (e.target as HTMLInputElement).value)} /></Field>
         <Field label="Sexo">
-          <Select value={form.sexo} onValueChange={(v) => set("sexo", v as any)}>
+          <Select value={form.sexo} onValueChange={(v) => set("sexo", v as Client["sexo"])}>
             <SelectTrigger><SelectValue placeholder="Selecciona" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="Masculino">Masculino</SelectItem>
@@ -349,7 +359,7 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
           </Select>
         </Field>
         <Field label="Estado civil">
-          <Select value={form.estadoCivil} onValueChange={(v) => set("estadoCivil", v as any)}>
+          <Select value={form.estadoCivil} onValueChange={(v) => set("estadoCivil", v as Client["estadoCivil"])}>
             <SelectTrigger><SelectValue placeholder="Selecciona" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="Soltero(a)">Soltero(a)</SelectItem>
@@ -375,7 +385,7 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
           </Select>
         </Field>
         <Field label="Fuente de prospección">
-          <Select value={form.fuente} onValueChange={(v) => set("fuente", v as any)}>
+          <Select value={form.fuente} onValueChange={(v) => set("fuente", v as Client["fuente"])}>
             <SelectTrigger><SelectValue placeholder="Selecciona" /></SelectTrigger>
             <SelectContent>
               {["Mercado natural","Referido","Redes","Frío","Evento","COI","Otros"].map(s => (
@@ -385,10 +395,10 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
           </Select>
         </Field>
         <Field label="Estatus">
-          <Select value={form.estatus} onValueChange={(v) => set("estatus", v as any)}>
+          <Select value={form.estatus} onValueChange={(v) => set("estatus", v as Client["estatus"])}>
             <SelectTrigger><SelectValue placeholder="Selecciona" /></SelectTrigger>
             <SelectContent>
-                {["Prospecto","Cliente","Inactivo","Referido","No interesado"].map(s => (
+                { ["Prospecto","Interesado","Cliente","Inactivo","Referido","No interesado"].map(s => (
                 <SelectItem key={s} value={s}>{s}</SelectItem>
               ))}
             </SelectContent>
@@ -423,7 +433,15 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
                 set("contactado_fecha", checked ? new Date() : null);
               }}
             />
-            <span className="text-xs text-neutral-600">{form.contactado ? (form.contactado_fecha ? new Date(form.contactado_fecha as any).toLocaleString() : new Date().toLocaleString()) : "—"}</span>
+            <span className="text-xs text-neutral-600">
+              {form.contactado
+                ? (() => {
+                    const raw = form.contactado_fecha;
+                    const d = raw ? (raw instanceof Date ? raw : new Date(raw)) : null;
+                    return d ? d.toLocaleString() : new Date().toLocaleString();
+                  })()
+                : "—"}
+            </span>
           </div>
         </Field>
       </div>
@@ -432,35 +450,82 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
           <Button variant="destructive" type="button" onClick={() => onDelete && onDelete()}>Borrar cliente</Button>
         )}
     <Button onClick={async () => {
-            // validate
-      const parsed = schema.safeParse({ ...form, contactado_fecha: form.contactado ? (form.contactado_fecha ? new Date(form.contactado_fecha as any) : new Date()) : null });
+            // Normaliza fecha de contacto para validación (Date o null)
+            const contactadoFechaForValidation = form.contactado
+              ? (form.contactado_fecha
+                  ? (form.contactado_fecha instanceof Date
+                      ? form.contactado_fecha
+                      : new Date(form.contactado_fecha))
+                  : new Date())
+              : null;
+            const parsed = schema.safeParse({ ...form, contactado_fecha: contactadoFechaForValidation });
             if (!parsed.success) {
               alert(parsed.error.issues.map(i=>i.message).join("\n"));
               return;
             }
-      // Normaliza email vacío a null para evitar conflictos/validación
-      const payload = { ...parsed.data } as Client;
-      if (!payload.email || (payload.email as any).trim?.() === "") payload.email = null as any;
-      // normalize contactado_fecha in local payload
-      if (payload.contactado) payload.contactado_fecha = (payload as any).contactado_fecha || new Date();
-      else payload.contactado_fecha = null;
-            // optional Supabase upsert
-      try {
+            type ClientFormSchema = z.infer<typeof schema>;
+            const base: ClientFormSchema = parsed.data;
+            // Convertimos null -> undefined para campos opcionales del dominio
+            const normalizeNullable = <T,>(v: T | null | undefined): T | undefined => (v == null ? undefined : v);
+            const payload: Client = {
+              id: base.id,
+              nombre: base.nombre,
+              apellidoPaterno: normalizeNullable(base.apellidoPaterno || undefined),
+              apellidoMaterno: normalizeNullable(base.apellidoMaterno || undefined),
+              telefono: normalizeNullable(base.telefono || undefined),
+              email: normalizeNullable(base.email || undefined),
+              fechaNacimiento: normalizeNullable(base.fechaNacimiento || undefined),
+              sexo: normalizeNullable(base.sexo || undefined),
+              estadoCivil: normalizeNullable(base.estadoCivil as Client["estadoCivil"] | null | undefined),
+              estadoResidencia: normalizeNullable(base.estadoResidencia || undefined),
+              ocupacion: normalizeNullable(base.ocupacion || undefined),
+              empresa: normalizeNullable(base.empresa || undefined),
+              ingresoHogar: normalizeNullable(base.ingresoHogar || undefined),
+              dependientes: normalizeNullable(base.dependientes || undefined),
+              fumador: normalizeNullable(base.fumador || undefined),
+              fuente: normalizeNullable(base.fuente as Client["fuente"] | null | undefined),
+              estatus: base.estatus,
+              ultimoContacto: normalizeNullable(base.ultimoContacto || undefined),
+              notas: normalizeNullable(base.notas || undefined),
+              anfRealizado: normalizeNullable(base.anfRealizado || undefined),
+              anfFecha: normalizeNullable(base.anfFecha || undefined),
+              createdAt: normalizeNullable(base.createdAt || undefined),
+              contactado: base.contactado,
+              contactado_fecha: base.contactado_fecha || undefined,
+            };
+            if (!payload.email || payload.email.trim() === "") payload.email = undefined;
+            if (payload.contactado) {
+              // asegura instancia Date
+              payload.contactado_fecha = payload.contactado_fecha
+                ? (payload.contactado_fecha instanceof Date
+                    ? payload.contactado_fecha
+                    : new Date(payload.contactado_fecha))
+                : new Date();
+            } else {
+              payload.contactado_fecha = null;
+            }
+            // optional Supabase upsert (best-effort, ignora errores)
+            try {
               const sb = (await import("@/lib/supabaseClient")).getSupabase();
               if (sb) {
-                // map fields to DB columns if needed
-        const dbRow: any = {
-          ...payload,
-          email: payload.email || null,
-          contactado_fecha: payload.contactado
-            ? ((payload as any).contactado_fecha instanceof Date
-                ? (payload as any).contactado_fecha.toISOString()
-                : (payload as any).contactado_fecha || new Date().toISOString())
-            : null,
-        };
-    const { data, error } = await sb.from("clients").upsert(dbRow, { onConflict: "id" }).select("id, contactado, contactado_fecha").single();
-        if (error) console.warn("Supabase: upsert client error", error.message);
-        else console.info("Supabase: upsert client ok", data);
+                const dbRow: ClientDBRow = {
+                  ...(payload as Omit<Client, "email" | "contactado_fecha">),
+                  email: payload.email || null,
+                  contactado_fecha: payload.contactado
+                    ? (payload.contactado_fecha instanceof Date
+                        ? payload.contactado_fecha.toISOString()
+                        : (typeof payload.contactado_fecha === "string"
+                            ? payload.contactado_fecha
+                            : new Date().toISOString()))
+                    : null,
+                };
+                const { data, error } = await sb
+                  .from("clients")
+                  .upsert(dbRow, { onConflict: "id" })
+                  .select("id, contactado, contactado_fecha")
+                  .single();
+                if (error) console.warn("Supabase: upsert client error", error.message);
+                else console.info("Supabase: upsert client ok", data);
               }
             } catch {}
             onSubmit(payload);
@@ -471,3 +536,72 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
 }
 
 export default ClientsPage;
+
+// --- Hover resumen de pólizas -------------------------------------------
+function PoliciesSummaryHover({ clientId }: { clientId: string }) {
+  const [open, setOpen] = useState(false);
+  const [policies, setPolicies] = useState<Policy[]>([]);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const load = () => {
+    if (policies.length) return; // cache simple
+    const all = PoliciesRepo.list();
+    setPolicies(all.filter(p => p.clienteId === clientId));
+  };
+  const show = () => { timerRef.current = setTimeout(() => { load(); setOpen(true); }, 350); };
+  const hide = () => { if (timerRef.current) clearTimeout(timerRef.current); setOpen(false); };
+
+  const fmtDate = (iso?: string) => {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+  };
+  const totalPrima = policies.reduce((acc, p) => acc + (p.primaMensual || 0), 0);
+
+  return (
+    <div className="relative inline-block"
+         onMouseEnter={show} onMouseLeave={hide}
+         onFocus={show} onBlur={hide}>
+      <span className="cursor-help underline decoration-dotted">
+        {policies.length}
+      </span>
+      {open && (
+        <div className="absolute z-30 left-0 mt-2 w-80 max-h-80 overflow-hidden bg-white border shadow-lg rounded-md p-2 text-xs animate-in fade-in-0 zoom-in-95">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-[11px] font-semibold text-neutral-600">Pólizas: {policies.length}</span>
+            {policies.length > 0 && (
+              <span className="text-[11px] text-neutral-500">Total {totalPrima.toLocaleString("es-MX", { style: "currency", currency: (policies[0]?.moneda)||"MXN" })}</span>
+            )}
+          </div>
+          {policies.length === 0 && <div className="text-neutral-500 py-1">Sin pólizas</div>}
+          {policies.length > 0 && (
+            <div className="divide-y overflow-auto max-h-64 pr-1">
+              {policies.map(p => {
+                const prima = p.primaMensual ? p.primaMensual.toLocaleString("es-MX", { style: "currency", currency: p.moneda || "MXN" }) : "-";
+                const renov = fmtDate(p.fechaPago || p.fechaEntrega || p.createdAt);
+                return (
+                  <div key={p.id} className="py-2 space-y-1">
+                    <div className="font-medium text-neutral-800 leading-snug">{p.plan || "(Plan)"}</div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-neutral-500">Renovación:</span>
+                      <span>{renov}</span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-neutral-500">Prima:</span>
+                      <span>{prima}</span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-neutral-500">Moneda:</span>
+                      <span>{p.moneda || "MXN"}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

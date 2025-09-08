@@ -26,18 +26,19 @@ import { uid } from "@/lib/types";
 import { repo, LS_KEYS } from "@/lib/storage";
 import { getCurrentUser, filterByScope } from "@/lib/users";
 
-// Local repo for goals (we store ownerId alongside Goal even if it's not in the type)
-const GoalsRepo = repo<any>(LS_KEYS.goals);
+// Goal con ownerId para persistencia local
+interface GoalExtended extends Goal { ownerId: string }
+const GoalsRepo = repo<GoalExtended>(LS_KEYS.goals);
 
 function monthToday() {
   return new Date().toISOString().slice(0, 7); // YYYY-MM
 }
 
 export default function GoalsPage() {
-  const [rows, setRows] = useState<any[]>(GoalsRepo.list());
+  const [rows, setRows] = useState<GoalExtended[]>(GoalsRepo.list());
   const [q, setQ] = useState("");
   const [openNew, setOpenNew] = useState(false);
-  const [openEdit, setOpenEdit] = useState<{ open: boolean; goal: any | null }>({ open: false, goal: null });
+  const [openEdit, setOpenEdit] = useState<{ open: boolean; goal: GoalExtended | null }>({ open: false, goal: null });
   const me = getCurrentUser();
 
   // persist
@@ -45,9 +46,9 @@ export default function GoalsPage() {
     GoalsRepo.saveAll(rows);
   }, [rows]);
 
-  const scoped = useMemo(() => {
-    if (!me) return [] as any[];
-    return filterByScope<any>(rows, me, (g) => g.ownerId);
+  const scoped = useMemo<GoalExtended[]>(() => {
+    if (!me) return [];
+    return filterByScope<GoalExtended>(rows, me, (g) => g.ownerId);
   }, [rows, me]);
 
   const filtered = useMemo(() => {
@@ -57,15 +58,16 @@ export default function GoalsPage() {
   }, [scoped, q]);
 
   const canCreate = Boolean(me); // anyone logged in can create their own goals
-  const canEdit = (g: any) => me && g.ownerId === me.id; // only owner can edit/delete
+  const canEdit = (g: GoalExtended) => !!me && g.ownerId === me.id;
 
-  const handleCreate = (g: any) => {
+  const handleCreate = (g: Goal) => {
     if (!me) return;
-    setRows([{ ...g, ownerId: me.id }, ...rows]);
+    const extended: GoalExtended = { ...g, ownerId: me.id };
+    setRows([extended, ...rows]);
     setOpenNew(false);
   };
 
-  const handleUpdate = (g: any) => {
+  const handleUpdate = (g: GoalExtended) => {
     setRows((prev) => prev.map((x) => (x.id === g.id ? g : x)));
     setOpenEdit({ open: false, goal: null });
   };
@@ -141,7 +143,7 @@ export default function GoalsPage() {
             <DialogTitle>Editar meta</DialogTitle>
           </DialogHeader>
           {openEdit.goal && (
-            <GoalForm initial={openEdit.goal} onSubmit={handleUpdate} />
+            <GoalForm initial={openEdit.goal} onSubmit={(g) => handleUpdate(g as GoalExtended)} />
           )}
           {openEdit.goal && canEdit(openEdit.goal) && (
             <DialogFooter className="justify-between mt-2">
@@ -149,7 +151,7 @@ export default function GoalsPage() {
                 variant="destructive"
                 onClick={() => {
                   if (window.confirm("¿Eliminar esta meta permanentemente?")) {
-                    handleDelete(openEdit.goal.id);
+                    if (openEdit.goal) handleDelete(openEdit.goal.id);
                   }
                 }}
               >
@@ -163,33 +165,36 @@ export default function GoalsPage() {
   );
 }
 
-function GoalForm({ initial, onSubmit }: { initial?: any | null; onSubmit: (g: any) => void }) {
-  const [form, setForm] = useState<any>(
-    initial || { id: uid(), tipo: "Ingreso mensual", mes: monthToday(), metaMensual: 100000 }
+const GOAL_TYPES = [
+  "Ingreso mensual",
+  "Pólizas mensuales",
+  "Citas semanales",
+  "Referidos"
+] as const;
+type GoalType = typeof GOAL_TYPES[number];
+
+type GoalFormShape = Goal & { ownerId?: string } & { tipo: GoalType };
+
+function GoalForm({ initial, onSubmit }: { initial?: GoalFormShape | null; onSubmit: (g: GoalFormShape) => void }) {
+  const [form, setForm] = useState<GoalFormShape>(
+    (initial as GoalFormShape) || { id: uid(), tipo: "Ingreso mensual", mes: monthToday(), metaMensual: 100000 }
   );
   useEffect(() => {
     if (initial) setForm(initial);
   }, [initial]);
-  const set = (k: keyof Goal | "mes", v: any) => setForm((prev: any) => ({ ...prev, [k]: v }));
+  const set = <K extends keyof GoalFormShape>(k: K, v: GoalFormShape[K]) =>
+    setForm(prev => ({ ...prev, [k]: v }));
   const isEdit = Boolean(initial);
 
   return (
     <div className="grid grid-cols-2 gap-3">
       <Field label="Tipo">
-        <Select value={form.tipo} onValueChange={(v) => set("tipo" as any, v)}>
+  <Select value={form.tipo} onValueChange={(v) => set("tipo", v as GoalType)}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {[
-              "Ingreso mensual",
-              "Pólizas mensuales",
-              "Citas semanales",
-              "Referidos",
-              "Llamadas semanales",
-              "Cierres semanales",
-              "Entregas"
-            ].map((s) => (
+            {GOAL_TYPES.map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
               </SelectItem>
@@ -208,7 +213,7 @@ function GoalForm({ initial, onSubmit }: { initial?: any | null; onSubmit: (g: a
         <Input
           type="number"
           value={form.metaMensual ?? ""}
-          onChange={(e) => set("metaMensual" as any, Number((e.target as HTMLInputElement).value))}
+          onChange={(e) => set("metaMensual", Number((e.target as HTMLInputElement).value) || 0)}
         />
       </Field>
 

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel } from "@/components/ui/select";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel } from "@/components/ui/select"; // keep other selects
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Plus } from "lucide-react";
@@ -72,7 +72,7 @@ const fmtMoney = (value?: number, currency?: Policy["moneda"]) => {
 
 export default function PoliciesPage(){
   const currentUser = getCurrentUser();
-  const user = currentUser ?? ({ id: "__anon__", role: "asesor", name: "Invitado", username: "", password: "" } as any);
+  const user = currentUser ?? { id: "__anon__", role: "asesor", name: "Invitado", username: "", password: "" };
 
   const [rows, setRows] = useState<Policy[]>(PoliciesRepo.list());
   const [clients] = useState<Client[]>(ClientsRepo.list());
@@ -85,8 +85,8 @@ export default function PoliciesPage(){
   useEffect(()=>{ PoliciesRepo.saveAll(rows); },[rows]);
 
   // Alcance por usuario (promotor/gerente/asesor)
-  const visibleClients = useMemo(()=> filterByScope(clients, user, c => (c as Client).ownerId), [clients, user]);
-  const visibleRows = useMemo(()=> filterByScope(rows, user, r => (r as Policy).ownerId), [rows, user]);
+  const visibleClients = useMemo(()=> filterByScope<Client>(clients, user, c => c.ownerId), [clients, user]);
+  const visibleRows = useMemo(()=> filterByScope<Policy>(rows, user, r => r.ownerId), [rows, user]);
 
   // Búsqueda
   const filtered = useMemo(()=>{
@@ -262,7 +262,7 @@ function PolicyForm({
   });
 
   useEffect(()=>{ if(initial) setForm(initial); },[initial]);
-  const set = (k: keyof Policy, v:any)=> setForm(prev=> ({...prev, [k]: v }));
+  const set = <K extends keyof Policy>(k: K, v: Policy[K])=> setForm(prev=> ({...prev, [k]: v }));
 
   const isEdit = Boolean(initial);
 
@@ -274,13 +274,12 @@ function PolicyForm({
 
   return (
     <div className="grid grid-cols-2 gap-3">
-      <Field label="Cliente">
-        <Select value={form.clienteId} onValueChange={v=>set("clienteId", v)}>
-          <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
-          <SelectContent>
-            {clients.map(c=> <SelectItem key={c.id} value={c.id}>{c.nombre} {c.apellidoPaterno||""}</SelectItem>)}
-          </SelectContent>
-        </Select>
+      <Field label="Cliente (escribe para buscar)">
+        <ClientQuickSelect
+          clients={clients}
+          value={form.clienteId}
+          onChange={(v)=> set("clienteId", v)}
+        />
       </Field>
 
       <Field label="Plan">
@@ -335,7 +334,7 @@ function PolicyForm({
       <Field label="Número de póliza"><Input value={form.numeroPoliza||""} onChange={e=>set("numeroPoliza", (e.target as HTMLInputElement).value)} /></Field>
 
       <Field label="Estado">
-        <Select value={form.estado} onValueChange={(v)=>set("estado", v as Policy["estado"])}>
+  <Select value={form.estado} onValueChange={(v)=>set("estado", v as Policy["estado"])}>
           <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
           <SelectContent>
             {(["Vigente","Propuesta","Rechazada","En proceso"] as const).map(s=> <SelectItem key={s} value={s}>{s}</SelectItem>)}
@@ -352,7 +351,7 @@ function PolicyForm({
       </Field>
 
       <Field label="Moneda">
-        <Select value={form.moneda || "MXN"} onValueChange={(v)=>set("moneda", v as any)}>
+  <Select value={form.moneda || "MXN"} onValueChange={(v)=>set("moneda", v as Policy["moneda"])}>
           <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
           <SelectContent>
             <SelectItem value="MXN">MXN</SelectItem>
@@ -363,7 +362,7 @@ function PolicyForm({
       </Field>
 
       <Field label="MSI (meses sin intereses)">
-        <Select value={form.msi ? "si" : "no"} onValueChange={(v)=>set("msi", v==="si")}>
+  <Select value={form.msi ? "si" : "no"} onValueChange={(v)=>set("msi", v==="si")}>
           <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
           <SelectContent>
             <SelectItem value="no">No</SelectItem>
@@ -381,7 +380,7 @@ function PolicyForm({
       </Field>
 
       <Field label="Forma de pago">
-        <Select value={form.formaPago || "Mensual"} onValueChange={(v)=>set("formaPago", v as any)}>
+  <Select value={form.formaPago || "Mensual"} onValueChange={(v)=>set("formaPago", v as Policy["formaPago"])}>
           <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
           <SelectContent>
             <SelectItem value="Mensual">Mensual</SelectItem>
@@ -415,6 +414,72 @@ function PolicyForm({
       <div className="col-span-2 mt-2">
         <Button className="w-full" onClick={()=> onSubmit(form)}>{isEdit? 'Actualizar póliza' : 'Guardar póliza'}</Button>
       </div>
+    </div>
+  );
+}
+
+// --- ClientQuickSelect: buscador rápido de clientes ----------------------
+function ClientQuickSelect({ clients, value, onChange }: { clients: Client[]; value?: string; onChange: (id: string) => void; }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const containerRef = React.useRef<HTMLDivElement|null>(null);
+
+  const selected = clients.find(c => c.id === value);
+  const display = selected ? `${selected.nombre} ${selected.apellidoPaterno||""}`.trim() : "";
+
+  const filtered = useMemo(()=>{
+    const q = query.trim().toLowerCase();
+    if(!q) return clients.slice(0,30);
+    return clients.filter(c => `${c.nombre} ${c.apellidoPaterno||""} ${c.apellidoMaterno||""}`.toLowerCase().includes(q)).slice(0,30);
+  },[clients, query]);
+
+  useEffect(()=>{
+    const onDoc = (e: MouseEvent) => {
+      if(!containerRef.current) return;
+      if(!containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return ()=> document.removeEventListener("mousedown", onDoc);
+  },[]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <Input
+        placeholder="Nombre del cliente"
+        value={open ? query : (display || query)}
+        onFocus={()=> { setOpen(true); setQuery(display); }}
+        onChange={e=> { setQuery((e.target as HTMLInputElement).value); setOpen(true); }}
+        className="pr-8"
+      />
+      {selected && !open && (
+        <button
+          type="button"
+            onClick={()=> { onChange(""); setQuery(""); setOpen(true); }}
+          className="absolute right-1 top-1 text-neutral-400 hover:text-neutral-600 text-xs px-1"
+          aria-label="Limpiar selección"
+        >×</button>
+      )}
+      {open && (
+        <div className="absolute z-30 mt-1 w-full bg-white border rounded-md shadow-lg max-h-64 overflow-auto text-sm">
+          {filtered.length === 0 && (
+            <div className="px-3 py-2 text-neutral-500 text-xs">Sin coincidencias</div>
+          )}
+          {filtered.map(c => {
+            const full = `${c.nombre} ${c.apellidoPaterno||""} ${c.apellidoMaterno||""}`.trim();
+            return (
+              <button
+                type="button"
+                key={c.id}
+                onClick={()=> { onChange(c.id); setOpen(false); setQuery(full); }}
+                className={`block w-full text-left px-3 py-2 hover:bg-neutral-100 ${c.id===value? 'bg-neutral-50 font-medium':''}`}
+              >{full}</button>
+            );
+          })}
+          {clients.length > 30 && !query && (
+            <div className="px-3 py-1 text-[10px] text-neutral-400">Mostrando primeros 30. Escribe para filtrar.</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

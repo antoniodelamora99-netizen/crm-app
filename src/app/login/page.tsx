@@ -28,7 +28,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen grid place-items-center bg-slate-50">
+    <div className="min-h-screen grid place-items-center bg-white">
       <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-5 text-center">
           <div className="text-xl font-extrabold tracking-tight text-slate-900">GAMO</div>
@@ -39,7 +39,7 @@ export default function LoginPage() {
           <div>
             <label className="block text-sm font-medium text-slate-700">Usuario</label>
             <input
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="ej. ase-juan"
@@ -49,7 +49,7 @@ export default function LoginPage() {
           <div>
             <label className="block text-sm font-medium text-slate-700">Contraseña</label>
             <input
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -65,7 +65,7 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            className="w-full rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700 active:translate-y-px"
+            className="w-full rounded-md bg-black px-3 py-2 text-sm font-semibold text-white hover:bg-neutral-900 active:translate-y-px focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black"
           >
             Iniciar sesión
           </button>

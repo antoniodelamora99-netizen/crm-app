@@ -21,10 +21,24 @@ export function getUsers(): User[] {
       localStorage.setItem(LS_KEYS.users, JSON.stringify(SEED_USERS));
       return SEED_USERS;
     }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? parsed.map((u: any) => ({ username: "", password: "", startDate: u?.startDate ?? undefined, ...u }))
-      : SEED_USERS;
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      // Narrow each element to a partial User shape; fill required fields if missing
+      return parsed.map((u): User => {
+        const base: Partial<User> = typeof u === "object" && u !== null ? (u as Record<string, unknown>) : {};
+        return {
+          id: String(base.id || crypto.randomUUID()),
+            role: (base.role === "promotor" || base.role === "gerente" || base.role === "asesor") ? base.role : "asesor",
+          name: typeof base.name === "string" ? base.name : "Usuario",
+          username: typeof base.username === "string" ? base.username : "user" + Math.random().toString(36).slice(2,6),
+          password: typeof base.password === "string" ? base.password : "1234",
+          startDate: typeof base.startDate === "string" ? base.startDate : undefined,
+          managerId: typeof base.managerId === "string" ? base.managerId : undefined,
+          promoterId: typeof base.promoterId === "string" ? base.promoterId : undefined,
+        };
+      });
+    }
+    return SEED_USERS;
   } catch {
     return SEED_USERS;
   }
@@ -70,7 +84,7 @@ export function filterByScope<T>(
   if (!user) return [];
   const allowed = new Set(visibleOwnerIdsFor(user));
   return rows.filter(r => {
-    const o = getOwnerId(r as any);
-    return !!o && allowed.has(o);
+    const o = getOwnerId(r);
+    return typeof o === "string" && allowed.has(o);
   });
 }

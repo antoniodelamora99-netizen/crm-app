@@ -35,13 +35,14 @@ function formatMXPhone(raw: string){
 }
 
 // --- status helpers/options -----------------------------------------
-const STATUS_OPTIONS = ["Prospecto","Cliente","Inactivo","Referido","No interesado"] as const;
+const STATUS_OPTIONS = ["Prospecto","Interesado","Cliente","Inactivo","Referido","No interesado"] as const;
 function statusClasses(s?: string){
   const key = (s||"Prospecto").toLowerCase();
   switch(key){
     case "cliente": return "bg-green-100 text-green-700";
+  case "interesado": return "bg-amber-100 text-amber-700";
     case "inactivo": return "bg-gray-200 text-gray-700";
-    case "referido": return "bg-purple-100 text-purple-700";
+  case "referido": return "bg-neutral-300 text-neutral-800";
   case "no interesado": return "bg-rose-100 text-rose-700";
     default: return "bg-blue-100 text-blue-700"; // Prospecto
   }
@@ -82,9 +83,10 @@ export function ClientsPage() {
   // prioridad de estatus
   const statusOrder: Record<string, number> = {
     prospecto: 1,
-    cliente: 2,
-    referido: 3,
-    inactivo: 4,
+  interesado: 2,
+  cliente: 3,
+  referido: 4,
+  inactivo: 5,
   };
 
   const handleCreate = (c: Client) => {
@@ -232,6 +234,7 @@ export function ClientsPage() {
                 <th className="text-left p-3">Estatus ▾</th>
                 <th className="text-left p-3">Contactado</th>
                 <th className="text-left p-3">Fuente</th>
+                <th className="text-left p-3">Pólizas</th>
                 <th className="text-left p-3">Acciones</th>
               </tr>
             </thead>
@@ -255,12 +258,15 @@ export function ClientsPage() {
                   </td>
                   <td className="p-3">{c.fuente || "-"}</td>
                   <td className="p-3">
+                    <PoliciesSummaryHover clientId={c.id} />
+                  </td>
+                  <td className="p-3">
                     <Button variant="secondary" size="sm" onClick={() => setOpenEdit({open:true, client:c})}>Editar</Button>
                   </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td className="p-4 text-sm text-muted-foreground" colSpan={7}>Sin clientes para tu usuario.</td></tr>
+                <tr><td className="p-4 text-sm text-muted-foreground" colSpan={8}>Sin clientes para tu usuario.</td></tr>
               )}
             </tbody>
           </table>
@@ -495,3 +501,76 @@ function ClientForm({ initial, onSubmit, allClients, onDelete }: { initial?: Cli
 }
 
 export default ClientsPage;
+
+// --- Hover resumen de pólizas (columna número de pólizas) ---------------
+import { Policy } from "@/lib/types";
+const PoliciesRepo = repo<Policy>(LS_KEYS.policies);
+
+function PoliciesSummaryHover({ clientId }: { clientId: string; }) {
+  const [open, setOpen] = useState(false);
+  const [policies, setPolicies] = useState<Policy[]>([]);
+  const timerRef = React.useRef<any>(null);
+
+  const ensureLoaded = () => {
+    if (policies.length) return;
+    const all = PoliciesRepo.list();
+    setPolicies(all.filter(p => p.clienteId === clientId));
+  };
+  const show = () => {
+    timerRef.current = setTimeout(() => { ensureLoaded(); setOpen(true); }, 350);
+  };
+  const hide = () => { clearTimeout(timerRef.current); setOpen(false); };
+
+  const formatDate = (iso?: string) => {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+  };
+
+  const totalPrima = policies.reduce((acc, p) => acc + (p.primaMensual || 0), 0);
+
+  return (
+    <div className="relative inline-block" onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}>
+      <span className="cursor-help font-medium text-neutral-700 underline decoration-dotted">
+        {policies.length || 0}
+      </span>
+      {open && (
+        <div className="absolute z-30 left-0 mt-2 w-80 max-h-80 overflow-hidden bg-white border shadow-lg rounded-md p-2 text-xs animate-in fade-in-0 zoom-in-95">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-[11px] font-semibold text-neutral-600">Pólizas: {policies.length}</span>
+            {policies.length > 0 && (
+              <span className="text-[11px] text-neutral-500">Total {totalPrima.toLocaleString("es-MX", { style: "currency", currency: (policies[0]?.moneda)||"MXN" })}</span>
+            )}
+          </div>
+          {policies.length === 0 && <div className="text-neutral-500 py-1">Sin pólizas</div>}
+          {policies.length > 0 && (
+            <div className="divide-y overflow-auto max-h-64 pr-1">
+              {policies.map(p => {
+                const prima = p.primaMensual ? p.primaMensual.toLocaleString("es-MX", { style: "currency", currency: p.moneda || "MXN" }) : "-";
+                const renov = formatDate(p.fechaPago || p.fechaEntrega || p.createdAt);
+                return (
+                  <div key={p.id} className="py-2 space-y-1">
+                    <div className="font-medium text-neutral-800 leading-snug">{p.plan || "(Plan)"}</div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-neutral-500">Renovación:</span>
+                      <span>{renov}</span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-neutral-500">Prima:</span>
+                      <span>{prima}</span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-neutral-500">Moneda:</span>
+                      <span>{p.moneda || "MXN"}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

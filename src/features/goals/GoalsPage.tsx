@@ -9,7 +9,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Plus } from "lucide-react";
 
-import type { Client, Goal, Policy, User } from "@/lib/types";
+import type { Client, Goal, Policy } from "@/lib/types";
 import { uid } from "@/lib/types";
 import { repo, LS_KEYS } from "@/lib/storage";
 import { getCurrentUser, filterByScope } from "@/lib/users";
@@ -54,11 +54,11 @@ export default function GoalsPage(){
 
   // Alcance por usuario (metas y pólizas)
   const visibleGoals = useMemo(
-    ()=> user ? filterByScope(rows, user, g => (g as any).ownerId) : [],
+    ()=> user ? filterByScope<Goal>(rows, user, g => (g as Goal & { ownerId?: string }).ownerId) : [],
     [rows, user]
   );
   const visiblePolicies = useMemo(
-    ()=> user ? filterByScope(policies, user, p => (p as any).ownerId) : [],
+    ()=> user ? filterByScope<Policy>(policies, user, p => (p as Policy & { ownerId?: string }).ownerId) : [],
     [policies, user]
   );
 
@@ -113,7 +113,7 @@ export default function GoalsPage(){
             <DialogContent className="max-w-md">
               <DialogHeader><DialogTitle>Nueva meta</DialogTitle></DialogHeader>
               <GoalForm
-                onSubmit={(g)=> handleCreate({ ...g, id: uid(), ownerId: user.id })}
+                onSubmit={(g)=> handleCreate({ ...g, id: uid() })}
               />
             </DialogContent>
           </Dialog>
@@ -198,7 +198,7 @@ function GoalForm({ onSubmit, initial }:{
   } as Goal);
 
   useEffect(()=>{ if(initial) setForm(initial); },[initial]);
-  const set = (k: keyof Goal, v:any)=> setForm(prev=> ({...prev, [k]: v }));
+  const set = <K extends keyof Goal>(k: K, v: Goal[K])=> setForm(prev=> ({...prev, [k]: v }));
 
   return (
     <div className="grid grid-cols-2 gap-3">
@@ -237,7 +237,7 @@ function GoalForm({ onSubmit, initial }:{
     // repo roundtrip goals
     const tmpKey = "__test_goals__" + Math.random();
     const R = repo<Goal>(tmpKey);
-    const g: Goal = { id: "g1", tipo: "Ingreso mensual", mes: "2025-08", metaMensual: 100, metaAnual: 0 } as any;
+  const g: Goal = { id: "g1", tipo: "Ingreso mensual", mes: "2025-08", metaMensual: 100, metaAnual: 0 };
     R.saveAll([g]);
     const loaded = R.list();
     log("repo roundtrip (goals)", Array.isArray(loaded) && loaded[0].id === "g1");

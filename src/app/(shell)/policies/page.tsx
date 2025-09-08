@@ -3,15 +3,17 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge"; // (Tal vez ya no se usa tras refactor)
+import { Label } from "@/components/ui/label"; // needed for external form components if any label referenced here
 import { Plus } from "lucide-react";
 
 import { Client, Policy, uid, User } from "@/lib/types";
 import { repo, LS_KEYS } from "@/lib/storage";
 import { getCurrentUser, filterByScope, getUsers } from "@/lib/users";
+import { PolicyForm } from "@/features/policies/components/PolicyForm";
+import { PoliciesTable } from "@/features/policies/components/PoliciesTable";
 
 // Repos locales (SSR-safe)
 const ClientsRepo = repo<Client>(LS_KEYS.clients);
@@ -41,15 +43,14 @@ export default function PoliciesPage() {
   useEffect(() => { PoliciesRepo.saveAll(rows); }, [rows]);
 
   // Filtro por alcance (promotor/gerente ven lo de su scope; asesor solo lo suyo)
-  const visiblePolicies = useMemo(() => {
+  const visiblePolicies = useMemo<Policy[]>(() => {
     if (!user) return [];
-    return filterByScope(rows, user, (p) => (p as Policy).ownerId);
+    return filterByScope<Policy>(rows, user, (p) => p.ownerId);
   }, [rows, user]);
 
-  const visibleClients = useMemo(() => {
+  const visibleClients = useMemo<Client[]>(() => {
     if (!user) return [];
-    const scopedClients = filterByScope(clients, user, (c) => (c as Client).ownerId);
-    return scopedClients;
+    return filterByScope<Client>(clients, user, (c) => c.ownerId);
   }, [clients, user]);
 
   // Búsqueda y orden
@@ -118,7 +119,22 @@ export default function PoliciesPage() {
     setRows((prev) => prev.filter((x) => x.id !== id));
   };
 
-  const displayUser = (u?: any) => {
+  // Usuario/advisor/manager flexible (puede venir de distintos modelos previos)
+  interface Personish {
+    id?: string;
+    name?: string;
+    username?: string;
+    nombre?: string;
+    apellidoPaterno?: string;
+    apellidoMaterno?: string;
+    fullName?: string;
+    managerId?: string;
+    gerenteId?: string;
+    promoterId?: string;
+    promotorId?: string;
+    gerenciaId?: string;
+  }
+  const displayUser = (u?: Personish) => {
     if (!u) return "-";
     const n =
       (u.nombre ? `${u.nombre} ${u.apellidoPaterno || ""}`.trim() : null) ||
@@ -127,14 +143,14 @@ export default function PoliciesPage() {
       u.username;
     return n || "-";
   };
-  const displayGerenciaFor = (advisor?: any) => {
+  const displayGerenciaFor = (advisor?: Personish) => {
     if (!advisor) return "-";
     // Try common manager keys
-    const managerId = advisor.managerId || advisor.gerenteId || advisor.promotorId || advisor.manager || advisor.gerenciaId;
+  const managerId = advisor.managerId || advisor.gerenteId || advisor.promotorId || advisor.gerenciaId;
     const manager =
       (managerId && users.find((x) => x.id === managerId)) ||
       null;
-    return displayUser(manager);
+  return displayUser(manager || undefined);
   };
 
   const baseCols = 8; // cliente, plan, estado, prima, moneda, ingreso, pago, emisión
@@ -152,7 +168,7 @@ export default function PoliciesPage() {
             onChange={(e) => setQ((e.target as HTMLInputElement).value)}
             className="w-64"
           />
-          <Select value={sortKey} onValueChange={(v) => setSortKey(v as any)}>
+          <Select value={sortKey} onValueChange={(v) => setSortKey(v as typeof sortKey)}>
             <SelectTrigger className="w-40"><SelectValue placeholder="Orden"/></SelectTrigger>
             <SelectContent>
               <SelectItem value="createdAt">Fecha de creación</SelectItem>
@@ -161,7 +177,7 @@ export default function PoliciesPage() {
               <SelectItem value="prima">Prima</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={sortDir} onValueChange={(v) => setSortDir(v as any)}>
+          <Select value={sortDir} onValueChange={(v) => setSortDir(v as typeof sortDir)}>
             <SelectTrigger className="w-28"><SelectValue placeholder="Dirección"/></SelectTrigger>
             <SelectContent>
               <SelectItem value="asc">Asc</SelectItem>
@@ -206,7 +222,7 @@ export default function PoliciesPage() {
                 const clienteNombre = (user?.role === "asesor")
                   ? `${c?.nombre ?? "-"} ${c?.apellidoPaterno ?? ""}`.trim()
                   : firstName(c?.nombre);
-                const advisor = users.find((u) => u.id === (r as any).ownerId);
+                const advisor = users.find((u) => u.id === r.ownerId);
                 const asesorNombre = displayUser(advisor);
                 const gerenciaNombre = displayGerenciaFor(advisor);
                 return (
@@ -269,96 +285,3 @@ export default function PoliciesPage() {
   );
 }
 
-function PolicyForm({ clients, onSubmit, initial }: { clients: Client[]; onSubmit: (p: Policy) => void; initial?: Policy }) {
-  const [form, setForm] = useState<Policy>(
-    initial || { id: uid(), clienteId: clients[0]?.id || "", plan: "", estado: "Propuesta", moneda: "MXN", createdAt: new Date().toISOString() }
-  );
-  useEffect(() => { if (initial) setForm(initial); }, [initial]);
-  const set = (k: keyof Policy, v: any) => setForm((prev) => ({ ...prev, [k]: v }));
-  const isEdit = Boolean(initial);
-
-  return (
-    <div className="grid grid-cols-2 gap-3">
-      <Field label="Cliente">
-        <Select value={form.clienteId} onValueChange={(v) => set("clienteId", v)}>
-          <SelectTrigger><SelectValue placeholder="Selecciona" /></SelectTrigger>
-          <SelectContent>
-            {clients.map((c) => (
-              <SelectItem key={c.id} value={c.id}>{c.nombre} {c.apellidoPaterno || ""}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
-
-      {/* Plan con catálogo básico + libre */}
-      <Field label="Plan">
-        <Input value={form.plan} onChange={(e) => set("plan", (e.target as HTMLInputElement).value)} placeholder="Ej. Gastos Médicos Flex" />
-      </Field>
-
-      <Field label="Número de póliza">
-        <Input value={form.numeroPoliza || ""} onChange={(e) => set("numeroPoliza", (e.target as HTMLInputElement).value)} />
-      </Field>
-
-      <Field label="Estado">
-        <Select value={form.estado} onValueChange={(v) => set("estado", v as any)}>
-          <SelectTrigger><SelectValue placeholder="Selecciona" /></SelectTrigger>
-          <SelectContent>
-            {(["Vigente", "Propuesta", "Rechazada", "En proceso"]).map((s) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
-
-      <Field label="Prima mensual">
-        <Input type="number" value={form.primaMensual || ""} onChange={(e) => set("primaMensual", Number((e.target as HTMLInputElement).value))} />
-      </Field>
-
-      <Field label="Moneda">
-        <Select value={form.moneda || "MXN"} onValueChange={(v) => set("moneda", v as any)}>
-          <SelectTrigger><SelectValue placeholder="Selecciona" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="MXN">MXN</SelectItem>
-            <SelectItem value="USD">USD</SelectItem>
-            <SelectItem value="UDIS">UDIS</SelectItem>
-          </SelectContent>
-        </Select>
-      </Field>
-
-      <Field label="Forma de pago">
-        <Select value={form.formaPago || "Mensual"} onValueChange={(v) => set("formaPago", v as any)}>
-          <SelectTrigger><SelectValue placeholder="Selecciona" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="Mensual">Mensual</SelectItem>
-            <SelectItem value="Trimestral">Trimestral</SelectItem>
-            <SelectItem value="Semestral">Semestral</SelectItem>
-            <SelectItem value="Anual">Anual</SelectItem>
-          </SelectContent>
-        </Select>
-      </Field>
-
-      <Field label="Fecha de ingreso"><Input type="date" value={form.fechaIngreso || ""} onChange={(e) => set("fechaIngreso", (e.target as HTMLInputElement).value)} /></Field>
-      <Field label="Fecha de pago"><Input type="date" value={form.fechaPago || ""} onChange={(e) => set("fechaPago", (e.target as HTMLInputElement).value)} /></Field>
-      <Field label="Fecha de emisión"><Input type="date" value={form.fechaEntrega || ""} onChange={(e) => set("fechaEntrega", (e.target as HTMLInputElement).value)} /></Field>
-
-      {/* MSI (meses sin intereses) */}
-      <div className="col-span-2 flex items-center gap-2">
-        <input id="msi" type="checkbox" checked={Boolean(form.msi)} onChange={(e) => set("msi", (e.target as HTMLInputElement).checked)} />
-        <Label htmlFor="msi">Meses sin intereses (MSI)</Label>
-      </div>
-
-      <div className="col-span-2 mt-2">
-        <Button className="w-full" onClick={() => onSubmit(form)}>{isEdit ? "Actualizar póliza" : "Guardar póliza"}</Button>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="grid gap-1">
-      <Label className="text-xs text-neutral-600">{label}</Label>
-      {children}
-    </div>
-  );
-}
