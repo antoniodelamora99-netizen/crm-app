@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useRef } from 'react'
+import React, { useEffect, useMemo, useState, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { getCurrentUser } from '@/lib/users'
@@ -290,7 +290,7 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
 
         {/* CONTENIDO */}
         <main className="min-h-screen flex-1">
-          <div className="mx-auto max-w-7xl p-4 md:p-6 lg:p-8">{children}</div>
+          <div className="mx-auto max-w-7xl p-4 md:p-6 lg:p-8"><AppErrorBoundary>{children}</AppErrorBoundary></div>
           {/* Floating toggle for desktop when collapsed (optional show when collapsed) */}
           {sidebarCollapsed && (
             <button
@@ -306,3 +306,26 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
     </div>
   )
 }
+
+// Simple client-side error boundary to surface errors en producción
+class EB extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(err: Error) { return { error: err }; }
+  componentDidCatch(err: Error, info: any) { console.error('UI ErrorBoundary', err, info); }
+  render(): React.ReactNode {
+    if (this.state.error) {
+      return (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 space-y-2">
+          <div className="font-semibold">Se produjo un error en la interfaz</div>
+          <pre className="whitespace-pre-wrap text-[11px] max-h-40 overflow-auto">{this.state.error.message}</pre>
+          <button
+            onClick={() => { this.setState({ error: null }); if (typeof window !== 'undefined') window.location.reload(); }}
+            className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-medium hover:bg-red-700 active:scale-95"
+          >Recargar</button>
+        </div>
+      )
+    }
+    return this.props.children;
+  }
+}
+function AppErrorBoundary({ children }: { children: React.ReactNode }) { return <EB>{children}</EB>; }
