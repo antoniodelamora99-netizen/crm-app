@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { repo, LS_KEYS } from "@/lib/storage";
@@ -35,7 +35,17 @@ type RangeKey = "week" | "month" | "q3" | "all";
 export default function DashboardPage() {
   const user = getCurrentUser();
   const [range, setRange] = useState<RangeKey>("month");
-  const [error, setError] = useState<Error | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [rawClients, setRawClients] = useState<Client[]>([]);
+  const [rawPolicies, setRawPolicies] = useState<Policy[]>([]);
+  const [rawActivities, setRawActivities] = useState<Activity[]>([]);
+
+  // Carga inicial de datos locales (defensiva, nunca lanza setState dentro del render)
+  useEffect(() => {
+    try { setRawClients(ClientsRepo.list()); } catch (e) { setError('Error cargando clientes'); }
+    try { setRawPolicies(PoliciesRepo.list()); } catch (e) { setError('Error cargando pólizas'); }
+    try { setRawActivities(ActivitiesRepo.list()); } catch (e) { setError('Error cargando actividades'); }
+  }, []);
 
   const now = new Date();
 
@@ -60,22 +70,12 @@ export default function DashboardPage() {
     return { dateFrom: new Date(2000, 0, 1), dateTo: now };
   }, [range, now]);
 
-  // Carga defensiva (si hay datos corruptos capturamos el error)
-  let rawClients: Client[] = [];
-  let rawPolicies: Policy[] = [];
-  let rawActivities: Activity[] = [];
-  try {
-    rawClients = ClientsRepo.list();
-    rawPolicies = PoliciesRepo.list();
-    rawActivities = ActivitiesRepo.list();
-  } catch (e) {
-    if (!error) setError(e as Error);
-  }
-
-  const clients = user ? filterByScope(rawClients, user, (r) => r.ownerId) : rawClients;
-  const policies = user ? filterByScope(rawPolicies, user, (r) => r.ownerId) : rawPolicies;
-  const activities = (user ? filterByScope(rawActivities, user, (r) => r.ownerId) : rawActivities)
-    .filter(a => a && typeof a === 'object' && typeof (a as Activity).tipo === 'string');
+  const clients = useMemo(() => user ? filterByScope(rawClients, user, (r) => r.ownerId) : rawClients, [rawClients, user]);
+  const policies = useMemo(() => user ? filterByScope(rawPolicies, user, (r) => r.ownerId) : rawPolicies, [rawPolicies, user]);
+  const activities = useMemo(() => {
+    const base = user ? filterByScope(rawActivities, user, (r) => r.ownerId) : rawActivities;
+    return base.filter(a => a && typeof a === 'object' && typeof (a as Activity).tipo === 'string');
+  }, [rawActivities, user]);
 
   const inRange = (iso?: string) => {
     if (!iso) return false;
@@ -103,14 +103,9 @@ export default function DashboardPage() {
     return d >= startOfToday && d <= endOfToday;
   };
 
-  let puntosDelDia = 0;
-  try {
-    puntosDelDia = activities
-      .filter((a) => a.realizada && isToday(a.fechaHora))
-      .reduce((sum, a) => sum + (ACTIVITY_POINTS[(a.tipo as keyof typeof ACTIVITY_POINTS)] ?? 0), 0);
-  } catch (e) {
-    if (!error) setError(e as Error);
-  }
+  const puntosDelDia = activities
+    .filter((a) => a.realizada && isToday(a.fechaHora))
+    .reduce((sum, a) => sum + (ACTIVITY_POINTS[(a.tipo as keyof typeof ACTIVITY_POINTS)] ?? 0), 0);
 
   const progreso = Math.min(1, puntosDelDia / DAILY_TARGET);
 
@@ -127,10 +122,10 @@ export default function DashboardPage() {
       <div className="space-y-4 p-6">
         <h1 className="text-xl font-bold">Dashboard</h1>
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          Ocurrió un error al cargar tus métricas: {error.message}
+          Ocurrió un error al cargar tus métricas: {error}
           <div className="mt-2 flex gap-2">
             <Button variant="destructive" onClick={resetLocal}>Restablecer datos locales</Button>
-            <Button variant="secondary" onClick={() => setError(null)}>Intentar de nuevo</Button>
+            <Button variant="secondary" onClick={() => { setError(null); location.reload(); }}>Intentar de nuevo</Button>
           </div>
         </div>
       </div>
