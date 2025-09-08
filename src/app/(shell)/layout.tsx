@@ -227,16 +227,13 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         >
           {/* Branding card (como en el diseño que te gustaba) */}
           <div className={"relative border-b border-slate-200 " + (sidebarCollapsed ? "px-2 pt-5 pb-4" : "px-5 pt-6 pb-5")}>
-            <div className={"flex items-end gap-2 " + (sidebarCollapsed ? "justify-center" : "")}>
-              <div className={"font-extrabold tracking-tight text-slate-900 " + (sidebarCollapsed ? "text-xl" : "text-2xl")}>G</div>
+            <div className={"flex items-end " + (sidebarCollapsed ? "justify-center" : "gap-2")}> 
+              <div className={"font-extrabold tracking-tight text-slate-900 " + (sidebarCollapsed ? "text-xl" : "text-2xl")}>{sidebarCollapsed ? 'G' : 'GAMO'}</div>
               {!sidebarCollapsed && (
-                <>
-                  <div className="text-2xl font-extrabold tracking-tight text-slate-900">AMO</div>
-                  <span
-                    className="text-[11px] font-medium text-slate-400 mb-0.5 select-none"
-                    title={`Versión ${APP_VERSION} • ${BUILD_COMMIT_SHORT} • ${new Date(BUILD_DATE_ISO).toLocaleString()}`}
-                  >v{APP_VERSION}</span>
-                </>
+                <span
+                  className="text-[11px] font-medium text-slate-400 mb-0.5 select-none"
+                  title={`Versión ${APP_VERSION} • ${BUILD_COMMIT_SHORT} • ${new Date(BUILD_DATE_ISO).toLocaleString()}`}
+                >v{APP_VERSION}</span>
               )}
             </div>
             {!sidebarCollapsed && (

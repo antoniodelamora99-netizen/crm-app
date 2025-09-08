@@ -63,6 +63,13 @@ export default function UsersPage() {
   const handleUpdate = (u: User) => { setRows(prev => prev.map(x => x.id === u.id ? u : x)); setOpenEdit({ open: false, user: null }); };
   const handleDelete = (id: string) => { setRows(prev => prev.filter(x => x.id !== id)); };
 
+  // Colores de rol (restaurado)
+  const roleBadge: Record<UserRole, string> = {
+    asesor: "bg-sky-100 text-sky-800",
+    gerente: "bg-amber-100 text-amber-800",
+    promotor: "bg-emerald-100 text-emerald-800",
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
@@ -100,11 +107,7 @@ export default function UsersPage() {
                 <tr key={u.id} className="border-t">
                   <td className="p-3">{u.name}</td>
                   <td className="p-3">{u.username}</td>
-                  <td className="p-3">
-                    <Badge className={u.role === "promotor" ? "bg-neutral-900 text-white" : u.role === "gerente" ? "bg-neutral-700 text-white" : "bg-neutral-500 text-white"}>
-                      {u.role}
-                    </Badge>
-                  </td>
+                  <td className="p-3"><Badge className={roleBadge[u.role]}>{u.role}</Badge></td>
                   <td className="p-3">{u.startDate || "—"}</td>
                   <td className="p-3">{rows.find(x => x.id === u.managerId)?.name || "—"}</td>
                   <td className="p-3">{rows.find(x => x.id === u.promoterId)?.name || (u.role === "promotor" ? u.name : "—")}</td>
