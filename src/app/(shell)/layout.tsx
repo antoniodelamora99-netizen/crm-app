@@ -37,10 +37,8 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   const [user, setUser] = useState<Current | null>(null)
   const [menuOpen, setMenuOpen] = useState(false) // mobile overlay nav
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false) // desktop collapse
-  // Gestos (simple y fiable)
-  const [dragMode, setDragMode] = useState<'none' | 'opening' | 'closing'>('none')
-  const [dragDelta, setDragDelta] = useState(0)
-  const dragRef = useRef<{ startX: number; startY: number; mode: 'opening' | 'closing' | null }>({ startX: 0, startY: 0, mode: null })
+  // refs para gestos táctiles
+  const touchRef = useRef<{ startX: number; startY: number; opening: boolean; closing: boolean; active: boolean }>({ startX:0, startY:0, opening:false, closing:false, active:false })
   const router = useRouter()
   const pathname = usePathname()
 
@@ -107,19 +105,12 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Borde invisible para gesto de apertura (edge swipe) */}
-      {!menuOpen && dragMode === 'none' && (
-        <div
-          className="fixed left-0 top-0 h-full w-4 z-40 md:hidden touch-none"
-          onPointerDown={(e) => {
-            if (e.pointerType === 'mouse') return
-            dragRef.current = { startX: e.clientX, startY: e.clientY, mode: 'opening' }
-            setDragMode('opening'); setDragDelta(0)
-          }}
-        />
+      {/* Edge invisible (touch) para iniciar apertura via swipe */}
+      {!menuOpen && (
+        <div className="fixed left-0 top-0 h-full w-4 z-40 md:hidden" />
       )}
       {/* Top bar mobile (hamburger a la izquierda) */}
-      <div className="md:hidden relative flex items-center gap-3 pr-4 pl-14 py-3 border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-40">
+      <div className="md:hidden relative flex items-center gap-3 pr-4 pl-14 py-3 border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-50">
         {/* Botón fijo extremo izquierdo - estilo limpio sin borde */}
         <button
           onClick={() => setMenuOpen(o => !o)}
@@ -135,46 +126,30 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
           <span className="text-[10px] font-medium text-slate-400 mb-0.5 select-none">v{APP_VERSION}</span>
         </div>
       </div>
-      {/* Mobile overlay menu + gestos */}
-      {(menuOpen || dragMode !== 'none') && (
+      {/* Mobile overlay */}
+      {menuOpen && (
         <div
-          className="md:hidden fixed inset-0 z-50"
-          style={{
-            background: (() => {
-              const max = 0.4; const w = 288
-              if (dragMode === 'opening') return `rgba(0,0,0,${(dragDelta / w) * max})`
-              if (dragMode === 'closing') return `rgba(0,0,0,${max * (1 - dragDelta / w)})`
-              return `rgba(0,0,0,${menuOpen ? max : 0})`
-            })(),
-            transition: dragMode === 'none' ? 'background .25s ease' : 'none'
-          }}
-          onClick={() => { if (dragMode === 'none') setMenuOpen(false) }}
-          onPointerDown={(e) => {
-            if (!menuOpen) return
-            if (e.clientX <= 288) {
-              dragRef.current = { startX: e.clientX, startY: e.clientY, mode: 'closing' }
-              setDragMode('closing'); setDragDelta(0)
-            }
-          }}
+          className="md:hidden fixed inset-0 z-40"
+          style={{ background: 'rgba(0,0,0,0.35)', transition: 'background .25s ease' }}
+          onClick={() => setMenuOpen(false)}
         >
           <div
-            className="absolute left-0 top-0 h-full w-72 bg-white shadow-xl border-r border-slate-200 flex flex-col"
+            className="absolute left-0 top-0 h-full w-72 bg-white shadow-xl border-r border-slate-200 flex flex-col transition-transform duration-300 ease-out"
             onClick={e => e.stopPropagation()}
-            style={{
-              transform: (() => {
-                const w = 288
-                if (dragMode === 'opening') return `translateX(${Math.min(0, -w + dragDelta)}px)`
-                if (dragMode === 'closing') return `translateX(${-Math.min(dragDelta, w)}px)`
-                return menuOpen ? 'translateX(0)' : 'translateX(-100%)'
-              })(),
-              transition: dragMode === 'none' ? 'transform .32s cubic-bezier(.25,.8,.3,1)' : 'none'
-            }}
+            style={{ transform: menuOpen ? 'translateX(0)' : 'translateX(-100%)' }}
           >
             <div className="px-5 pt-6 pb-4 border-b border-slate-200">
               <div className="flex items-end gap-2">
                 <div className="text-2xl font-extrabold tracking-tight text-slate-900">GAMO</div>
                 <span className="text-[11px] font-medium text-slate-400 mb-0.5 select-none">v{APP_VERSION}</span>
               </div>
+              <button
+                onClick={() => setMenuOpen(false)}
+                aria-label="Cerrar menú"
+                className="absolute right-2 top-2 p-2 rounded-lg text-slate-500 hover:bg-slate-100 active:scale-95"
+              >
+                <X size={18} />
+              </button>
               <div className="text-[11px] tracking-wide text-slate-500 -mt-0.5">ASESORÍA INTEGRAL EN RIESGOS</div>
               <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
                 <div className="truncate text-[13px] font-semibold text-slate-800">{user.name}</div>
@@ -201,10 +176,6 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
             </div>
           </div>
         </div>
-      )}
-      {/* Listeners globales para gestos */}
-      {dragMode !== 'none' && (
-        <GestureCapture dragMode={dragMode} setDragMode={setDragMode} dragDelta={dragDelta} setDragDelta={setDragDelta} dragRef={dragRef} setMenuOpen={setMenuOpen} />
       )}
       <div className="flex">
         {/* SIDEBAR desktop (collapsible) */}
@@ -288,55 +259,40 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
       </div>
     </div>
   )
-}
-
-// Componente oculto que captura eventos de gesto (pointer) mientras arrastramos
-function GestureCapture({
-  dragMode,
-  setDragMode,
-  dragDelta,
-  setDragDelta,
-  dragRef,
-  setMenuOpen,
-}: {
-  dragMode: 'none' | 'opening' | 'closing'
-  setDragMode: (m: 'none' | 'opening' | 'closing') => void
-  dragDelta: number
-  setDragDelta: (n: number) => void
-  dragRef: React.MutableRefObject<{ startX: number; startY: number; mode: 'opening' | 'closing' | null }>
-  setMenuOpen: (v: boolean) => void
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-[60] md:hidden touch-none"
-      style={{ pointerEvents: 'none' }}
-      onPointerMove={(e) => {
-        if (dragMode === 'none') return
-        const dx = e.clientX - dragRef.current.startX
-        const dy = e.clientY - dragRef.current.startY
-        if (dragDelta === 0 && Math.abs(dy) > Math.abs(dx) * 1.1) {
-          // cancelar si gesto vertical
-          setDragMode('none'); setDragDelta(0); return
-        }
-        const w = 288
-        if (dragMode === 'opening') {
-          if (dx < 0) { setDragDelta(0); return }
-          setDragDelta(Math.min(w, dx))
-        } else if (dragMode === 'closing') {
-          if (dx > 0) { setDragDelta(0); return }
-          setDragDelta(Math.min(w, -dx))
-        }
-      }}
-      onPointerUp={() => {
-        if (dragMode === 'none') return
-        const commit = dragDelta > 70
-        if (dragMode === 'opening') {
-          if (commit) setMenuOpen(true)
-        } else if (dragMode === 'closing') {
-          if (commit) setMenuOpen(false)
-        }
-        setDragMode('none'); setDragDelta(0)
-      }}
-    />
-  )
+  // Gestos táctiles: swipe desde borde para abrir y swipe izquierda para cerrar
+  useEffect(() => {
+    let tracking = false
+    let opening = false
+    let closing = false
+    let startX = 0, startY = 0
+    const threshold = 60
+    const panelWidth = 288
+    function onStart(e: TouchEvent) {
+      if (e.touches.length !== 1) return
+      const t = e.touches[0]
+      startX = t.clientX; startY = t.clientY
+      // abrir
+      if (!menuOpen && startX < 16) { tracking = true; opening = true; closing = false }
+      // cerrar
+      else if (menuOpen && startX < panelWidth) { tracking = true; closing = true; opening = false }
+    }
+    function onMove(e: TouchEvent) {
+      if (!tracking) return
+      const t = e.touches[0]
+      const dx = t.clientX - startX
+      const dy = t.clientY - startY
+      if (Math.abs(dy) > Math.abs(dx) * 1.2) { tracking = false; return }
+      if (opening && dx > threshold) { setMenuOpen(true); tracking = false }
+      if (closing && dx < -threshold) { setMenuOpen(false); tracking = false }
+    }
+    function onEnd() { tracking = false; opening = false; closing = false }
+    window.addEventListener('touchstart', onStart, { passive: true })
+    window.addEventListener('touchmove', onMove, { passive: true })
+    window.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      window.removeEventListener('touchstart', onStart)
+      window.removeEventListener('touchmove', onMove)
+      window.removeEventListener('touchend', onEnd)
+    }
+  }, [menuOpen])
 }
