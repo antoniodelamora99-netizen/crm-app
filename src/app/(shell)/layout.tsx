@@ -82,27 +82,6 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
     router.replace('/login')
   }
 
-  // Early state: keep hook order stable
-  if (!user) {
-    return (
-      <div className="grid h-screen place-items-center bg-slate-50 text-slate-600">
-        <p className="animate-pulse">Redirigiendo al login…</p>
-      </div>
-    )
-  }
-  const itemClass = (href: string) => {
-    const active =
-      href === '/dashboard'
-        ? pathname === '/dashboard' || pathname === '/'
-        : pathname?.startsWith(href)
-    return [
-      'flex items-center gap-3 rounded-xl px-4 py-3 text-[15px] font-medium transition-colors',
-      active
-        ? 'bg-slate-900 text-white shadow-sm'
-        : 'bg-slate-50 text-slate-700 hover:bg-slate-100',
-    ].join(' ')
-  }
-
   // Gestos táctiles: swipe desde borde para abrir y swipe izquierda para cerrar
   useEffect(() => {
     let tracking = false
@@ -144,6 +123,28 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   // Para evitar animación en primer render (montaje inicial)
   const hasMountedRef = useRef(false)
   useEffect(() => { hasMountedRef.current = true }, [])
+
+  // Estado inicial (después de montar hooks) -> evita romper orden de hooks
+  if (!user) {
+    return (
+      <div className="grid h-screen place-items-center bg-slate-50 text-slate-600">
+        <p className="animate-pulse">Redirigiendo al login…</p>
+      </div>
+    )
+  }
+
+  const itemClass = (href: string) => {
+    const active =
+      href === '/dashboard'
+        ? pathname === '/dashboard' || pathname === '/'
+        : pathname?.startsWith(href)
+    return [
+      'flex items-center gap-3 rounded-xl px-4 py-3 text-[15px] font-medium transition-colors',
+      active
+        ? 'bg-slate-900 text-white shadow-sm'
+        : 'bg-slate-50 text-slate-700 hover:bg-slate-100',
+    ].join(' ')
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
