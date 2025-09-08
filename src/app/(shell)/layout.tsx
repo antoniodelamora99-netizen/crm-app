@@ -103,6 +103,48 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
     ].join(' ')
   }
 
+  // Gestos táctiles: swipe desde borde para abrir y swipe izquierda para cerrar
+  useEffect(() => {
+    let tracking = false
+    let opening = false
+    let closing = false
+    let startX = 0, startY = 0
+    const threshold = 60
+    const panelWidth = 288 // w-72
+    function onStart(e: TouchEvent) {
+      if (e.touches.length !== 1) return
+      const t = e.touches[0]
+      startX = t.clientX; startY = t.clientY
+      // abrir
+      if (!menuOpen && startX < 16) { tracking = true; opening = true; closing = false }
+      // cerrar
+      else if (menuOpen && startX < panelWidth) { tracking = true; closing = true; opening = false }
+    }
+    function onMove(e: TouchEvent) {
+      if (!tracking) return
+      const t = e.touches[0]
+      const dx = t.clientX - startX
+      const dy = t.clientY - startY
+      // Cancelar si es scroll vertical dominante
+      if (Math.abs(dy) > Math.abs(dx) * 1.2) { tracking = false; return }
+      if (opening && dx > threshold) { setMenuOpen(true); tracking = false }
+      if (closing && dx < -threshold) { setMenuOpen(false); tracking = false }
+    }
+    function onEnd() { tracking = false; opening = false; closing = false }
+    window.addEventListener('touchstart', onStart, { passive: true })
+    window.addEventListener('touchmove', onMove, { passive: true })
+    window.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      window.removeEventListener('touchstart', onStart)
+      window.removeEventListener('touchmove', onMove)
+      window.removeEventListener('touchend', onEnd)
+    }
+  }, [menuOpen])
+
+  // Para evitar animación en primer render (montaje inicial)
+  const hasMountedRef = useRef(false)
+  useEffect(() => { hasMountedRef.current = true }, [])
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Edge invisible (touch) para iniciar apertura via swipe */}
@@ -127,56 +169,60 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         </div>
       </div>
       {/* Mobile overlay */}
-      {menuOpen && (
+      <div
+        className={[
+          'md:hidden fixed inset-0 z-40 transition-opacity duration-300',
+          menuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        ].join(' ')}
+        style={{ background: 'rgba(0,0,0,0.35)' }}
+        onClick={() => setMenuOpen(false)}
+      >
         <div
-          className="md:hidden fixed inset-0 z-40"
-          style={{ background: 'rgba(0,0,0,0.35)', transition: 'background .25s ease' }}
-          onClick={() => setMenuOpen(false)}
+          className={[
+            'absolute left-0 top-0 h-full w-72 bg-white shadow-xl border-r border-slate-200 flex flex-col will-change-transform',
+            'transition-transform duration-300 ease-out'
+          ].join(' ')}
+          onClick={e => e.stopPropagation()}
+          style={{ transform: menuOpen ? 'translateX(0)' : 'translateX(-100%)' }}
         >
-          <div
-            className="absolute left-0 top-0 h-full w-72 bg-white shadow-xl border-r border-slate-200 flex flex-col transition-transform duration-300 ease-out"
-            onClick={e => e.stopPropagation()}
-            style={{ transform: menuOpen ? 'translateX(0)' : 'translateX(-100%)' }}
-          >
-            <div className="px-5 pt-6 pb-4 border-b border-slate-200">
-              <div className="flex items-end gap-2">
-                <div className="text-2xl font-extrabold tracking-tight text-slate-900">GAMO</div>
-                <span className="text-[11px] font-medium text-slate-400 mb-0.5 select-none">v{APP_VERSION}</span>
-              </div>
-              <button
-                onClick={() => setMenuOpen(false)}
-                aria-label="Cerrar menú"
-                className="absolute right-2 top-2 p-2 rounded-lg text-slate-500 hover:bg-slate-100 active:scale-95"
-              >
-                <X size={18} />
-              </button>
-              <div className="text-[11px] tracking-wide text-slate-500 -mt-0.5">ASESORÍA INTEGRAL EN RIESGOS</div>
-              <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
-                <div className="truncate text-[13px] font-semibold text-slate-800">{user.name}</div>
-                <div className="text-[11px] uppercase tracking-wide text-slate-500">{user.role}</div>
-              </div>
+          <div className="px-5 pt-6 pb-4 border-b border-slate-200">
+            <div className="flex items-end gap-2">
+              <div className="text-2xl font-extrabold tracking-tight text-slate-900">GAMO</div>
+              <span className="text-[11px] font-medium text-slate-400 mb-0.5 select-none">v{APP_VERSION}</span>
             </div>
-            <nav className="flex-1 overflow-auto px-3 py-4 space-y-1">
-              {menu.filter(m=>m.show).map(m => (
-                <Link key={m.href} href={m.href} className={itemClass(m.href)} onClick={() => setMenuOpen(false)}>
-                  <m.icon size={18} className="shrink-0" />
-                  <span>{m.label}</span>
-                </Link>
-              ))}
-            </nav>
-            <div className="p-4 border-t border-slate-200 flex items-center justify-between">
-              <button
-                onClick={() => { logout(); setMenuOpen(false); }}
-                className="text-[12px] font-medium text-slate-500 underline underline-offset-4 hover:text-rose-600"
-              >Cerrar sesión</button>
-              <button
-                onClick={() => setMenuOpen(false)}
-                className="text-[12px] text-slate-500 hover:text-slate-700"
-              >Cerrar</button>
+            <button
+              onClick={() => setMenuOpen(false)}
+              aria-label="Cerrar menú"
+              className="absolute right-2 top-2 p-2 rounded-lg text-slate-500 hover:bg-slate-100 active:scale-95"
+            >
+              <X size={18} />
+            </button>
+            <div className="text-[11px] tracking-wide text-slate-500 -mt-0.5">ASESORÍA INTEGRAL EN RIESGOS</div>
+            <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
+              <div className="truncate text-[13px] font-semibold text-slate-800">{user.name}</div>
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">{user.role}</div>
             </div>
           </div>
+          <nav className="flex-1 overflow-auto px-3 py-4 space-y-1">
+            {menu.filter(m=>m.show).map(m => (
+              <Link key={m.href} href={m.href} className={itemClass(m.href)} onClick={() => setMenuOpen(false)}>
+                <m.icon size={18} className="shrink-0" />
+                <span>{m.label}</span>
+              </Link>
+            ))}
+          </nav>
+          <div className="p-4 border-t border-slate-200 flex items-center justify-between">
+            <button
+              onClick={() => { logout(); setMenuOpen(false); }}
+              className="text-[12px] font-medium text-slate-500 underline underline-offset-4 hover:text-rose-600"
+            >Cerrar sesión</button>
+            <button
+              onClick={() => setMenuOpen(false)}
+              className="text-[12px] text-slate-500 hover:text-slate-700"
+            >Cerrar</button>
+          </div>
         </div>
-      )}
+      </div>
       <div className="flex">
         {/* SIDEBAR desktop (collapsible) */}
         <aside
@@ -259,40 +305,4 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
       </div>
     </div>
   )
-  // Gestos táctiles: swipe desde borde para abrir y swipe izquierda para cerrar
-  useEffect(() => {
-    let tracking = false
-    let opening = false
-    let closing = false
-    let startX = 0, startY = 0
-    const threshold = 60
-    const panelWidth = 288
-    function onStart(e: TouchEvent) {
-      if (e.touches.length !== 1) return
-      const t = e.touches[0]
-      startX = t.clientX; startY = t.clientY
-      // abrir
-      if (!menuOpen && startX < 16) { tracking = true; opening = true; closing = false }
-      // cerrar
-      else if (menuOpen && startX < panelWidth) { tracking = true; closing = true; opening = false }
-    }
-    function onMove(e: TouchEvent) {
-      if (!tracking) return
-      const t = e.touches[0]
-      const dx = t.clientX - startX
-      const dy = t.clientY - startY
-      if (Math.abs(dy) > Math.abs(dx) * 1.2) { tracking = false; return }
-      if (opening && dx > threshold) { setMenuOpen(true); tracking = false }
-      if (closing && dx < -threshold) { setMenuOpen(false); tracking = false }
-    }
-    function onEnd() { tracking = false; opening = false; closing = false }
-    window.addEventListener('touchstart', onStart, { passive: true })
-    window.addEventListener('touchmove', onMove, { passive: true })
-    window.addEventListener('touchend', onEnd, { passive: true })
-    return () => {
-      window.removeEventListener('touchstart', onStart)
-      window.removeEventListener('touchmove', onMove)
-      window.removeEventListener('touchend', onEnd)
-    }
-  }, [menuOpen])
 }
