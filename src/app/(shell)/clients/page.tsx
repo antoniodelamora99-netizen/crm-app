@@ -225,30 +225,36 @@ function ClientsPage() {
             <thead className="bg-neutral-100 text-neutral-700">
               <tr>
                 <th className="text-left p-3">Nombre</th>
-                <th className="text-left p-3">Teléfono</th>
-                <th className="text-left p-3">Email</th>
+                <th className="text-left p-3 hidden md:table-cell">Teléfono</th>
+                <th className="text-left p-3 hidden md:table-cell">Email</th>
                 <th className="text-left p-3">Estatus</th>
                 <th className="text-left p-3">Pólizas</th>
-                <th className="text-left p-3">Edad</th>
-                <th className="text-left p-3">Creado</th>
+                <th className="text-left p-3 hidden md:table-cell">Edad</th>
+                <th className="text-left p-3 hidden md:table-cell">Creado</th>
                 <th className="text-left p-3">Contactado</th>
                 <th className="text-left p-3">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((c) => (
-                <tr key={c.id} className="border-t">
-                  <td className="p-3">{c.nombre} {c.apellidoPaterno} {c.apellidoMaterno}</td>
-                  <td className="p-3">{fmtPhone(c.telefono)}</td>
-                  <td className="p-3">{c.email}</td>
-                  <td className="p-3">
+                <tr key={c.id} className="border-t align-top">
+                  <td className="p-3 align-top">
+                    <div className="font-medium">{c.nombre} {c.apellidoPaterno} {c.apellidoMaterno}</div>
+                    <div className="md:hidden mt-1 text-xs text-neutral-500 space-y-0.5">
+                      {c.telefono && <div>{fmtPhone(c.telefono)}</div>}
+                      {c.email && <div className="truncate max-w-[160px]">{c.email}</div>}
+                    </div>
+                  </td>
+                  <td className="p-3 hidden md:table-cell whitespace-nowrap">{fmtPhone(c.telefono)}</td>
+                  <td className="p-3 hidden md:table-cell">{c.email}</td>
+                  <td className="p-3 whitespace-nowrap">
                     <Badge className={clientStatusClass[(c.estatus || "Prospecto") as NonNullable<Client["estatus"]>]}> 
                       {c.estatus || "Prospecto"}
                     </Badge>
                   </td>
                   <td className="p-3"><PoliciesSummaryHover clientId={c.id} /></td>
-                  <td className="p-3">{toAge(c.fechaNacimiento) ?? "-"}</td>
-                  <td className="p-3">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "-"}</td>
+                  <td className="p-3 hidden md:table-cell">{toAge(c.fechaNacimiento) ?? "-"}</td>
+                  <td className="p-3 hidden md:table-cell">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "-"}</td>
                   <td className="p-3">
                     <input
                       type="checkbox"
