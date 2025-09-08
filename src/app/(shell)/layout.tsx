@@ -17,6 +17,8 @@ import {
   Stethoscope,
   BookOpenText,
   Wrench,
+  Menu,
+  X
 } from 'lucide-react'
 
 type Current = { id: string; role: 'asesor' | 'gerente' | 'promotor'; name: string }
@@ -31,6 +33,7 @@ type MenuItem = {
 
 export default function ShellLayout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<Current | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
 
@@ -70,9 +73,7 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
 
   // Subtle logout (no big red button)
   const logout = () => {
-    try {
-      localStorage.removeItem(LS_KEYS.currentUser)
-    } catch {}
+    try { localStorage.removeItem(LS_KEYS.currentUser) } catch {}
     router.replace('/login')
   }
 
@@ -84,7 +85,6 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
       </div>
     )
   }
-
   const itemClass = (href: string) => {
     const active =
       href === '/dashboard'
@@ -100,9 +100,62 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {/* Top bar mobile */}
+      <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-40">
+        <div className="flex items-end gap-2">
+          <span className="text-xl font-extrabold tracking-tight text-slate-900">GAMO</span>
+          <span className="text-[10px] font-medium text-slate-400 mb-0.5 select-none">v{APP_VERSION}</span>
+        </div>
+        <button
+          onClick={() => setMenuOpen(o => !o)}
+          aria-label="Abrir menú"
+          className="p-2 rounded-md border border-slate-300 text-slate-600 active:scale-95 transition"
+        >
+          {menuOpen ? <X size={18}/> : <Menu size={18} />}
+        </button>
+      </div>
+      {/* Mobile overlay menu */}
+      {menuOpen && (
+        <div className="md:hidden fixed inset-0 z-50 bg-black/40" onClick={() => setMenuOpen(false)}>
+          <div
+            className="absolute left-0 top-0 h-full w-72 bg-white shadow-xl border-r border-slate-200 flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 pt-6 pb-4 border-b border-slate-200">
+              <div className="flex items-end gap-2">
+                <div className="text-2xl font-extrabold tracking-tight text-slate-900">GAMO</div>
+                <span className="text-[11px] font-medium text-slate-400 mb-0.5 select-none">v{APP_VERSION}</span>
+              </div>
+              <div className="text-[11px] tracking-wide text-slate-500 -mt-0.5">ASESORÍA INTEGRAL EN RIESGOS</div>
+              <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
+                <div className="truncate text-[13px] font-semibold text-slate-800">{user.name}</div>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500">{user.role}</div>
+              </div>
+            </div>
+            <nav className="flex-1 overflow-auto px-3 py-4 space-y-1">
+              {menu.filter(m=>m.show).map(m => (
+                <Link key={m.href} href={m.href} className={itemClass(m.href)} onClick={() => setMenuOpen(false)}>
+                  <m.icon size={18} className="shrink-0" />
+                  <span>{m.label}</span>
+                </Link>
+              ))}
+            </nav>
+            <div className="p-4 border-t border-slate-200 flex items-center justify-between">
+              <button
+                onClick={() => { logout(); setMenuOpen(false); }}
+                className="text-[12px] font-medium text-slate-500 underline underline-offset-4 hover:text-rose-600"
+              >Cerrar sesión</button>
+              <button
+                onClick={() => setMenuOpen(false)}
+                className="text-[12px] text-slate-500 hover:text-slate-700"
+              >Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex">
-        {/* SIDEBAR */}
-        <aside className="sticky top-0 h-screen w-72 shrink-0 border-r border-slate-200 bg-white/90 backdrop-blur">
+        {/* SIDEBAR desktop */}
+        <aside className="hidden md:block sticky top-0 h-screen w-72 shrink-0 border-r border-slate-200 bg-white/90 backdrop-blur">
           {/* Branding card (como en el diseño que te gustaba) */}
           <div className="px-5 pt-6 pb-5 border-b border-slate-200">
             <div className="flex items-end gap-2">
@@ -148,7 +201,7 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
 
         {/* CONTENIDO */}
         <main className="min-h-screen flex-1">
-          <div className="mx-auto max-w-7xl p-6 lg:p-8">{children}</div>
+          <div className="mx-auto max-w-7xl p-4 md:p-6 lg:p-8">{children}</div>
         </main>
       </div>
     </div>
