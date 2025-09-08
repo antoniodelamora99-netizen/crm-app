@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "prebuild": "node scripts/generate-build-meta.cjs",
     "build": "next build",
-  "start": "next start",
-  "lint": "next lint",
-  "clean": "rm -rf .next",
-  "dev:clean": "rm -rf .next && next dev --turbopack"
+    "start": "next start",
+    "lint": "next lint",
+    "clean": "rm -rf .next",
+    "dev:clean": "rm -rf .next && next dev --turbopack"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

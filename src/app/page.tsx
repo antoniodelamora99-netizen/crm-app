@@ -1,6 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { APP_VERSION } from "@/lib/version";
+import { BUILD_COMMIT_SHORT, BUILD_DATE_ISO } from "@/lib/buildMeta";
 import { useRouter } from "next/navigation";
 
 export default function RootRedirect() {
@@ -12,8 +13,11 @@ export default function RootRedirect() {
   }, [router]);
 
   return (
-    <div className="fixed bottom-2 right-2 text-[10px] text-neutral-400 select-none font-medium">
-      v{APP_VERSION}
+    <div
+      className="fixed bottom-2 right-2 text-[10px] text-neutral-400 select-none font-medium"
+      title={`Versión ${APP_VERSION} • ${BUILD_COMMIT_SHORT} • ${new Date(BUILD_DATE_ISO).toLocaleString()}`}
+    >
+      v{APP_VERSION} · {BUILD_COMMIT_SHORT}
     </div>
   );
 }

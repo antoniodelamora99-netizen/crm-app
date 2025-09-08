@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { getCurrentUser } from '@/lib/users'
 import { APP_VERSION } from '@/lib/version'
+import { BUILD_COMMIT_SHORT, BUILD_DATE_ISO } from '@/lib/buildMeta'
 import { LS_KEYS } from '@/lib/storage'
 import {
   BarChart3,
@@ -106,7 +107,10 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
           <div className="px-5 pt-6 pb-5 border-b border-slate-200">
             <div className="flex items-end gap-2">
               <div className="text-2xl font-extrabold tracking-tight text-slate-900">GAMO</div>
-              <span className="text-[11px] font-medium text-slate-400 mb-0.5 select-none">v{APP_VERSION}</span>
+              <span
+                className="text-[11px] font-medium text-slate-400 mb-0.5 select-none"
+                title={`Versión ${APP_VERSION} • ${BUILD_COMMIT_SHORT} • ${new Date(BUILD_DATE_ISO).toLocaleString()}`}
+              >v{APP_VERSION} · {BUILD_COMMIT_SHORT}</span>
             </div>
             <div className="text-[11px] tracking-wide text-slate-500 -mt-0.5">
               ASESORÍA INTEGRAL EN RIESGOS
