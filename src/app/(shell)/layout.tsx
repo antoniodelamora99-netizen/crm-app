@@ -124,14 +124,7 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   const hasMountedRef = useRef(false)
   useEffect(() => { hasMountedRef.current = true }, [])
 
-  // Estado inicial (después de montar hooks) -> evita romper orden de hooks
-  if (!user) {
-    return (
-      <div className="grid h-screen place-items-center bg-slate-50 text-slate-600">
-        <p className="animate-pulse">Redirigiendo al login…</p>
-      </div>
-    )
-  }
+  const loadingUser = !user;
 
   const itemClass = (href: string) => {
     const active =
@@ -200,8 +193,8 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
             </button>
             <div className="text-[11px] tracking-wide text-slate-500 -mt-0.5">ASESORÍA INTEGRAL EN RIESGOS</div>
             <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
-              <div className="truncate text-[13px] font-semibold text-slate-800">{user.name}</div>
-              <div className="text-[11px] uppercase tracking-wide text-slate-500">{user.role}</div>
+              <div className="truncate text-[13px] font-semibold text-slate-800">{user?.name || '...'}</div>
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">{user?.role || '—'}</div>
             </div>
           </div>
           <nav className="flex-1 overflow-auto px-3 py-4 space-y-1">
@@ -267,8 +260,8 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
 
             {/* Usuario compacto */}
           <div className={"mt-4 rounded-lg bg-slate-50 " + (sidebarCollapsed ? "mx-2 px-1 py-2" : "px-3 py-2")}> 
-            <div className="truncate text-[13px] font-semibold text-slate-800" title={user.name}>{sidebarCollapsed ? user.name.split(' ')[0] : user.name}</div>
-            {!sidebarCollapsed && <div className="text-[11px] uppercase tracking-wide text-slate-500">{user.role}</div>}
+            <div className="truncate text-[13px] font-semibold text-slate-800" title={user?.name}>{sidebarCollapsed ? (user?.name?.split(' ')[0] || '...') : (user?.name || '...')}</div>
+            {!sidebarCollapsed && <div className="text-[11px] uppercase tracking-wide text-slate-500">{user?.role || '—'}</div>}
             {!sidebarCollapsed && (
               <button
                 onClick={logout}
@@ -291,7 +284,15 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
 
         {/* CONTENIDO */}
         <main className="min-h-screen flex-1">
-          <div className="mx-auto max-w-7xl p-4 md:p-6 lg:p-8"><AppErrorBoundary>{children}</AppErrorBoundary></div>
+          <div className="mx-auto max-w-7xl p-4 md:p-6 lg:p-8">
+            <AppErrorBoundary>
+              {loadingUser ? (
+                <div className="h-[60vh] grid place-items-center text-slate-500 text-sm">Cargando sesión…</div>
+              ) : (
+                children
+              )}
+            </AppErrorBoundary>
+          </div>
           {/* Floating toggle for desktop when collapsed (optional show when collapsed) */}
           {sidebarCollapsed && (
             <button
