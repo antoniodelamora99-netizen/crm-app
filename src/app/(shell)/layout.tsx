@@ -126,6 +126,16 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
 
   const loadingUser = !user;
 
+  // Formatea fecha de build en UTC de forma determinista (YYYY-MM-DD HH:MM UTC)
+  function formatBuildDateUTC(iso: string): string {
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return iso;
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+    } catch { return iso; }
+  }
+
   const itemClass = (href: string) => {
     const active =
       href === '/dashboard'
@@ -232,18 +242,16 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
               {!sidebarCollapsed && (
                 <span
                   className="text-[11px] font-medium text-slate-400 mb-0.5 select-none"
-                  title={`Versión ${APP_VERSION} • ${BUILD_COMMIT_SHORT} • ${new Date(BUILD_DATE_ISO).toLocaleString()}`}
+                  // Evita mismatch de hidratación usando formato UTC determinista (sin locale del cliente)
+                  title={`Versión ${APP_VERSION} • ${BUILD_COMMIT_SHORT} • ${formatBuildDateUTC(BUILD_DATE_ISO)}`}
+                  suppressHydrationWarning
                 >v{APP_VERSION}</span>
               )}
             </div>
             {!sidebarCollapsed && (
               <>
                 <div className="text-[11px] tracking-wide text-slate-500 -mt-0.5">ASESORÍA INTEGRAL EN RIESGOS</div>
-                <div className="mt-1 text-[10px] text-slate-400">
-                  {new Date(BUILD_DATE_ISO).toLocaleDateString('es-MX', { year: 'numeric', month: '2-digit', day: '2-digit' })}
-                  {" "}
-                  {new Date(BUILD_DATE_ISO).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
-                </div>
+                <div className="mt-1 text-[10px] text-slate-400" suppressHydrationWarning>{formatBuildDateUTC(BUILD_DATE_ISO)}</div>
               </>
             )}
             <button
