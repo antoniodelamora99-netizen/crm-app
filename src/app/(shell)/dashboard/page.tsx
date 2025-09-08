@@ -35,6 +35,7 @@ type RangeKey = "week" | "month" | "q3" | "all";
 export default function DashboardPage() {
   const user = getCurrentUser();
   const [range, setRange] = useState<RangeKey>("month");
+  const [error, setError] = useState<Error | null>(null);
 
   const now = new Date();
 
@@ -59,13 +60,22 @@ export default function DashboardPage() {
     return { dateFrom: new Date(2000, 0, 1), dateTo: now };
   }, [range, now]);
 
-  const rawClients = ClientsRepo.list();
-  const rawPolicies = PoliciesRepo.list();
-  const rawActivities = ActivitiesRepo.list();
+  // Carga defensiva (si hay datos corruptos capturamos el error)
+  let rawClients: Client[] = [];
+  let rawPolicies: Policy[] = [];
+  let rawActivities: Activity[] = [];
+  try {
+    rawClients = ClientsRepo.list();
+    rawPolicies = PoliciesRepo.list();
+    rawActivities = ActivitiesRepo.list();
+  } catch (e) {
+    if (!error) setError(e as Error);
+  }
 
   const clients = user ? filterByScope(rawClients, user, (r) => r.ownerId) : rawClients;
   const policies = user ? filterByScope(rawPolicies, user, (r) => r.ownerId) : rawPolicies;
-  const activities = user ? filterByScope(rawActivities, user, (r) => r.ownerId) : rawActivities;
+  const activities = (user ? filterByScope(rawActivities, user, (r) => r.ownerId) : rawActivities)
+    .filter(a => a && typeof a === 'object' && typeof (a as Activity).tipo === 'string');
 
   const inRange = (iso?: string) => {
     if (!iso) return false;
@@ -93,11 +103,39 @@ export default function DashboardPage() {
     return d >= startOfToday && d <= endOfToday;
   };
 
-  const puntosDelDia = activities
-    .filter((a) => a.realizada && isToday(a.fechaHora))
-    .reduce((sum, a) => sum + (ACTIVITY_POINTS[a.tipo as keyof typeof ACTIVITY_POINTS] ?? 0), 0);
+  let puntosDelDia = 0;
+  try {
+    puntosDelDia = activities
+      .filter((a) => a.realizada && isToday(a.fechaHora))
+      .reduce((sum, a) => sum + (ACTIVITY_POINTS[(a.tipo as keyof typeof ACTIVITY_POINTS)] ?? 0), 0);
+  } catch (e) {
+    if (!error) setError(e as Error);
+  }
 
   const progreso = Math.min(1, puntosDelDia / DAILY_TARGET);
+
+  const resetLocal = () => {
+    try {
+      const keys = [LS_KEYS.clients, LS_KEYS.policies, LS_KEYS.activities];
+      keys.forEach(k => localStorage.removeItem(k));
+      location.reload();
+    } catch {}
+  };
+
+  if (error) {
+    return (
+      <div className="space-y-4 p-6">
+        <h1 className="text-xl font-bold">Dashboard</h1>
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          Ocurrió un error al cargar tus métricas: {error.message}
+          <div className="mt-2 flex gap-2">
+            <Button variant="destructive" onClick={resetLocal}>Restablecer datos locales</Button>
+            <Button variant="secondary" onClick={() => setError(null)}>Intentar de nuevo</Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
