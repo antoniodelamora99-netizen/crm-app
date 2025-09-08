@@ -37,9 +37,10 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   const [user, setUser] = useState<Current | null>(null)
   const [menuOpen, setMenuOpen] = useState(false) // mobile overlay nav
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false) // desktop collapse
-  // Gesture / drag state for mobile sidebar
-  const [drag, setDrag] = useState<{ opening: boolean; closing: boolean; delta: number }>({ opening: false, closing: false, delta: 0 })
-  const dragRef = useRef<{ startX: number; startY: number; active: boolean; mode: 'opening' | 'closing' | null }>({ startX: 0, startY: 0, active: false, mode: null })
+  // Gestos (simple y fiable)
+  const [dragMode, setDragMode] = useState<'none' | 'opening' | 'closing'>('none')
+  const [dragDelta, setDragDelta] = useState(0)
+  const dragRef = useRef<{ startX: number; startY: number; mode: 'opening' | 'closing' | null }>({ startX: 0, startY: 0, mode: null })
   const router = useRouter()
   const pathname = usePathname()
 
@@ -106,14 +107,14 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Gesture edge (abrir) - solo móvil cuando cerrado y no arrastrando */}
-      {!menuOpen && !drag.opening && (
+      {/* Borde invisible para gesto de apertura (edge swipe) */}
+      {!menuOpen && dragMode === 'none' && (
         <div
-          className="fixed left-0 top-0 h-full w-3 z-40 md:hidden touch-none"
+          className="fixed left-0 top-0 h-full w-4 z-40 md:hidden touch-none"
           onPointerDown={(e) => {
             if (e.pointerType === 'mouse') return
-            dragRef.current = { startX: e.clientX, startY: e.clientY, active: true, mode: 'opening' }
-            setDrag({ opening: true, closing: false, delta: 0 })
+            dragRef.current = { startX: e.clientX, startY: e.clientY, mode: 'opening' }
+            setDragMode('opening'); setDragDelta(0)
           }}
         />
       )}
@@ -125,7 +126,7 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
           aria-label={menuOpen ? "Cerrar menú" : "Abrir menú"}
           className="absolute left-2 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center rounded-xl text-slate-700 active:scale-90 transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/50 hover:bg-slate-100/70"
         >
-          <span className={['transition-all duration-300 ease-out will-change-transform', menuOpen ? 'scale-90 rotate-90 opacity-80' : ''].join(' ')}>
+          <span className={['transition-all duration-300 ease-out will-change-transform', menuOpen ? 'scale-95 rotate-45 opacity-80' : ''].join(' ')}>
             {menuOpen ? <X size={22}/> : <Menu size={22} />}
           </span>
         </button>
@@ -134,38 +135,39 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
           <span className="text-[10px] font-medium text-slate-400 mb-0.5 select-none">v{APP_VERSION}</span>
         </div>
       </div>
-      {/* Mobile overlay menu */}
-      {(menuOpen || drag.opening || drag.closing) && (
+      {/* Mobile overlay menu + gestos */}
+      {(menuOpen || dragMode !== 'none') && (
         <div
           className="md:hidden fixed inset-0 z-50"
           style={{
-            background: 'rgba(0,0,0,' + ((menuOpen ? 0.45 : 0.45 * (drag.delta / 288))) + ')',
-            transition: drag.opening || drag.closing ? 'none' : 'background .35s'
+            background: (() => {
+              const max = 0.4; const w = 288
+              if (dragMode === 'opening') return `rgba(0,0,0,${(dragDelta / w) * max})`
+              if (dragMode === 'closing') return `rgba(0,0,0,${max * (1 - dragDelta / w)})`
+              return `rgba(0,0,0,${menuOpen ? max : 0})`
+            })(),
+            transition: dragMode === 'none' ? 'background .25s ease' : 'none'
           }}
-          onClick={() => { if (!drag.opening && !drag.closing) setMenuOpen(false) }}
+          onClick={() => { if (dragMode === 'none') setMenuOpen(false) }}
           onPointerDown={(e) => {
             if (!menuOpen) return
-            // Inicia gesto de cierre solo si se toca dentro del panel (x < panel width)
             if (e.clientX <= 288) {
-              dragRef.current = { startX: e.clientX, startY: e.clientY, active: true, mode: 'closing' }
-              setDrag({ opening: false, closing: true, delta: 0 })
+              dragRef.current = { startX: e.clientX, startY: e.clientY, mode: 'closing' }
+              setDragMode('closing'); setDragDelta(0)
             }
           }}
         >
           <div
-            className={"absolute left-0 top-0 h-full w-72 bg-white shadow-2xl border-r border-slate-200 flex flex-col " + (drag.opening || drag.closing ? '' : 'menu-slide-in')}
+            className="absolute left-0 top-0 h-full w-72 bg-white shadow-xl border-r border-slate-200 flex flex-col"
             onClick={e => e.stopPropagation()}
             style={{
               transform: (() => {
-                if (drag.opening) {
-                  return `translateX(${Math.min(0, -288 + drag.delta)}px)`
-                }
-                if (drag.closing) {
-                  return `translateX(${-Math.min(drag.delta, 288)}px)`
-                }
-                return 'translateX(0)'
+                const w = 288
+                if (dragMode === 'opening') return `translateX(${Math.min(0, -w + dragDelta)}px)`
+                if (dragMode === 'closing') return `translateX(${-Math.min(dragDelta, w)}px)`
+                return menuOpen ? 'translateX(0)' : 'translateX(-100%)'
               })(),
-              transition: (drag.opening || drag.closing) ? 'none' : 'transform .5s cubic-bezier(.22,.97,.36,1)'
+              transition: dragMode === 'none' ? 'transform .32s cubic-bezier(.25,.8,.3,1)' : 'none'
             }}
           >
             <div className="px-5 pt-6 pb-4 border-b border-slate-200">
@@ -200,41 +202,10 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
           </div>
         </div>
       )}
-      {/* Global pointer move/up listeners for drag (mobile only) */}
-      <div
-        className="hidden"
-        onPointerMove={(e) => {
-          if (!dragRef.current.active) return
-          const dx = e.clientX - dragRef.current.startX
-          const dy = e.clientY - dragRef.current.startY
-            // Si se desplaza más vertical que horizontal aborta
-          if (Math.abs(dy) > Math.abs(dx) * 1.2 && drag.delta === 0) {
-            dragRef.current.active = false
-            setDrag({ opening: false, closing: false, delta: 0 })
-            return
-          }
-          if (dragRef.current.mode === 'opening') {
-            if (dx < 0) return // no arrastrar hacia la izquierda para abrir
-            setDrag(s => ({ ...s, delta: Math.min(288, dx) }))
-          } else if (dragRef.current.mode === 'closing') {
-            if (dx > 0) return
-            setDrag(s => ({ ...s, delta: Math.min(288, -dx) }))
-          }
-        }}
-        onPointerUp={() => {
-          if (!dragRef.current.active) return
-            const { mode } = dragRef.current
-            dragRef.current.active = false
-            const committed = drag.delta > 80 // umbral
-            if (mode === 'opening') {
-              if (committed) setMenuOpen(true)
-              setDrag({ opening: false, closing: false, delta: 0 })
-            } else if (mode === 'closing') {
-              if (committed) setMenuOpen(false)
-              setDrag({ opening: false, closing: false, delta: 0 })
-            }
-        }}
-      />
+      {/* Listeners globales para gestos */}
+      {dragMode !== 'none' && (
+        <GestureCapture dragMode={dragMode} setDragMode={setDragMode} dragDelta={dragDelta} setDragDelta={setDragDelta} dragRef={dragRef} setMenuOpen={setMenuOpen} />
+      )}
       <div className="flex">
         {/* SIDEBAR desktop (collapsible) */}
         <aside
@@ -316,5 +287,56 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         </main>
       </div>
     </div>
+  )
+}
+
+// Componente oculto que captura eventos de gesto (pointer) mientras arrastramos
+function GestureCapture({
+  dragMode,
+  setDragMode,
+  dragDelta,
+  setDragDelta,
+  dragRef,
+  setMenuOpen,
+}: {
+  dragMode: 'none' | 'opening' | 'closing'
+  setDragMode: (m: 'none' | 'opening' | 'closing') => void
+  dragDelta: number
+  setDragDelta: (n: number) => void
+  dragRef: React.MutableRefObject<{ startX: number; startY: number; mode: 'opening' | 'closing' | null }>
+  setMenuOpen: (v: boolean) => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[60] md:hidden touch-none"
+      style={{ pointerEvents: 'none' }}
+      onPointerMove={(e) => {
+        if (dragMode === 'none') return
+        const dx = e.clientX - dragRef.current.startX
+        const dy = e.clientY - dragRef.current.startY
+        if (dragDelta === 0 && Math.abs(dy) > Math.abs(dx) * 1.1) {
+          // cancelar si gesto vertical
+          setDragMode('none'); setDragDelta(0); return
+        }
+        const w = 288
+        if (dragMode === 'opening') {
+          if (dx < 0) { setDragDelta(0); return }
+          setDragDelta(Math.min(w, dx))
+        } else if (dragMode === 'closing') {
+          if (dx > 0) { setDragDelta(0); return }
+          setDragDelta(Math.min(w, -dx))
+        }
+      }}
+      onPointerUp={() => {
+        if (dragMode === 'none') return
+        const commit = dragDelta > 70
+        if (dragMode === 'opening') {
+          if (commit) setMenuOpen(true)
+        } else if (dragMode === 'closing') {
+          if (commit) setMenuOpen(false)
+        }
+        setDragMode('none'); setDragDelta(0)
+      }}
+    />
   )
 }
