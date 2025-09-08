@@ -115,6 +115,11 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
             <div className="text-[11px] tracking-wide text-slate-500 -mt-0.5">
               ASESORÍA INTEGRAL EN RIESGOS
             </div>
+            <div className="mt-1 text-[10px] text-slate-400">
+              {new Date(BUILD_DATE_ISO).toLocaleDateString('es-MX', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+              {" "}
+              {new Date(BUILD_DATE_ISO).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+            </div>
 
             {/* Usuario compacto */}
             <div className="mt-4 rounded-lg bg-slate-50 px-3 py-2">
