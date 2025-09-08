@@ -1,5 +1,6 @@
 "use client";
 import { useEffect } from "react";
+import { APP_VERSION } from "@/lib/version";
 import { useRouter } from "next/navigation";
 
 export default function RootRedirect() {
@@ -12,7 +13,7 @@ export default function RootRedirect() {
 
   return (
     <div className="fixed bottom-2 right-2 text-[10px] text-neutral-400 select-none font-medium">
-      v0.0.1
+      v{APP_VERSION}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { getCurrentUser } from '@/lib/users'
+import { APP_VERSION } from '@/lib/version'
 import { LS_KEYS } from '@/lib/storage'
 import {
   BarChart3,
@@ -103,10 +104,10 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         <aside className="sticky top-0 h-screen w-72 shrink-0 border-r border-slate-200 bg-white/90 backdrop-blur">
           {/* Branding card (como en el diseño que te gustaba) */}
           <div className="px-5 pt-6 pb-5 border-b border-slate-200">
-            <div className="text-2xl font-extrabold tracking-tight text-slate-900">GAMO</div>
-              <div className="flex items-end gap-2">
-                <span className="text-[11px] font-medium text-slate-400 mb-0.5 select-none">v0.0.1</span>
-              </div>
+            <div className="flex items-end gap-2">
+              <div className="text-2xl font-extrabold tracking-tight text-slate-900">GAMO</div>
+              <span className="text-[11px] font-medium text-slate-400 mb-0.5 select-none">v{APP_VERSION}</span>
+            </div>
             <div className="text-[11px] tracking-wide text-slate-500 -mt-0.5">
               ASESORÍA INTEGRAL EN RIESGOS
             </div>
