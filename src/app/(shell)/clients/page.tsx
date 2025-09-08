@@ -26,12 +26,12 @@ import { Plus, ArrowUpDown } from "lucide-react";
 
 import type { Client, Policy } from "@/lib/types";
 import { uid } from "@/lib/types";
-import { repo, LS_KEYS } from "@/lib/storage";
+import { repo, LS_KEYS } from "@/lib/storage"; // mantiene policies locales temporalmente
 import { getCurrentUser, filterByScope } from "@/lib/users";
-import { setContactado } from "@/features/clients/utils/contactado";
+import { setContactado } from "@/features/clients/utils/contactado"; // aún usado para lógica de fecha local
+import { listRemoteClients, upsertRemoteClient, deleteRemoteClient, toggleRemoteContactado } from "@/lib/data/clients";
 
-// Repos locales
-const ClientsRepo = repo<Client>(LS_KEYS.clients);
+// Repos locales (solo policies por ahora mientras migramos)
 const PoliciesRepo = repo<Policy>(LS_KEYS.policies);
 
 // Helpers
@@ -70,17 +70,38 @@ function fmtPhone(v?: string) {
 function ClientsPage() {
   const current = getCurrentUser();
   const allowContactToggle = current?.role === "asesor"; // promotor/gerente disabled
-  const [rows, setRows] = useState<Client[]>(() => ClientsRepo.list());
+  const [rows, setRows] = useState<Client[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<"created" | "name" | "status" | "contact">("created");
   const [invert, setInvert] = useState(false);
   const [openNew, setOpenNew] = useState(false);
   const [openEdit, setOpenEdit] = useState<{ open: boolean; client: Client | null }>({ open: false, client: null });
 
-  // Persistencia
+  // Carga inicial desde Supabase (si está configurado)
   useEffect(() => {
-    ClientsRepo.saveAll(rows);
-  }, [rows]);
+    let active = true;
+    (async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const remote = await listRemoteClients();
+        if (!active) return;
+        if (remote.length) {
+          setRows(remote);
+        } else {
+          // fallback: si no hay remoto (o no configurado) deja rows vacíos (o podríamos cargar local antigua)
+          setRows([]);
+        }
+      } catch (e) {
+        setLoadError("No se pudo cargar clientes remotos");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   // Alcance por usuario (asesor/gerente/promotor)
   const scoped = useMemo<Client[]>(() => {
@@ -125,57 +146,53 @@ function ClientsPage() {
   }, [scoped, q, sortBy, invert]);
 
   // Crear/Actualizar/Borrar
-  const handleCreate = (c: Client) => {
-    const ownerId = current?.id;
+  const handleCreate = async (c: Client) => {
+    if (!current) return;
     const withMeta: Client = {
       ...c,
-      ownerId,
+      ownerId: current.id,
       createdAt: c.createdAt || new Date().toISOString(),
     };
-  // ensure contacto date when created as contactado
-  if (withMeta.contactado && !withMeta.contactado_fecha) withMeta.contactado_fecha = new Date().toISOString();
-    const updated = [withMeta, ...rows];
-    ClientsRepo.saveAll(updated);
-    setRows(updated);
-    setOpenNew(false);
+    if (withMeta.contactado && !withMeta.contactado_fecha) withMeta.contactado_fecha = new Date();
+    const saved = await upsertRemoteClient(withMeta);
+    if (saved) {
+      setRows(prev => [saved, ...prev]);
+      setOpenNew(false);
+    }
   };
 
-  const handleUpdate = (c: Client) => {
-    // normalize contactado_fecha
-    const prev = ClientsRepo.list();
-    const existing = prev.find(x => x.id === c.id);
+  const handleUpdate = async (c: Client) => {
+    // Mantiene owner/createdAt originales si existen en estado actual
+    const existing = rows.find(x => x.id === c.id);
     let merged: Client = { ...c };
     if (existing) {
-      if (Boolean(existing.contactado) !== Boolean(c.contactado)) {
-        // use helper to preserve/set contactado_fecha
-        const updated = setContactado(c.id, Boolean(c.contactado));
-        if (updated) {
-          merged = { ...updated, ...c } as Client;
-        }
-      }
-      // preserve metadata fields that should not get lost on edit
       merged.ownerId = existing.ownerId || merged.ownerId;
       merged.createdAt = existing.createdAt || merged.createdAt;
+      if (Boolean(existing.contactado) !== Boolean(c.contactado)) {
+        // fecha de contacto si cambia estado
+        merged.contactado_fecha = c.contactado ? new Date() : null;
+      }
     }
-    const newList = prev.map(x => x.id === c.id ? merged : x);
-    ClientsRepo.saveAll(newList);
-    setRows(newList);
-    setOpenEdit({ open: false, client: null });
+    const saved = await upsertRemoteClient(merged);
+    if (saved) {
+      setRows(prev => prev.map(x => x.id === saved.id ? saved : x));
+      setOpenEdit({ open: false, client: null });
+    }
   };
 
-  const handleDelete = (id: string) => {
-    const newList = ClientsRepo.list().filter((x) => x.id !== id);
-    ClientsRepo.saveAll(newList);
-    setRows(newList);
-    setOpenEdit({ open: false, client: null });
+  const handleDelete = async (id: string) => {
+    const ok = await deleteRemoteClient(id);
+    if (ok) {
+      setRows(prev => prev.filter(x => x.id !== id));
+      setOpenEdit({ open: false, client: null });
+    }
   };
 
-  const toggleContactado = (id: string, val: boolean) => {
-    const updated = setContactado(id, val);
-    if (updated) {
-      const list = ClientsRepo.list();
-      setRows(list);
-    }
+  const toggleContactado = async (id: string, val: boolean) => {
+    const target = rows.find(r => r.id === id);
+    if (!target) return;
+    const saved = await toggleRemoteContactado(target, val);
+    if (saved) setRows(prev => prev.map(x => x.id === id ? saved : x));
   };
 
   return (
@@ -221,6 +238,12 @@ function ClientsPage() {
 
       <Card className="shadow">
         <CardContent className="p-0 overflow-x-auto">
+          {loading && (
+            <div className="p-4 text-sm text-neutral-500">Cargando clientes…</div>
+          )}
+          {loadError && !loading && (
+            <div className="p-4 text-sm text-red-600">{loadError}</div>
+          )}
           <table className="w-full text-sm">
             <thead className="bg-neutral-100 text-neutral-700">
               <tr>
@@ -236,7 +259,7 @@ function ClientsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((c) => (
+              {!loading && filtered.map((c) => (
                 <tr key={c.id} className="border-t align-top">
                   <td className="p-3 align-top">
                     <div className="font-medium">{c.nombre} {c.apellidoPaterno} {c.apellidoMaterno}</div>
@@ -268,7 +291,7 @@ function ClientsPage() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {!loading && filtered.length === 0 && (
                 <tr>
                   <td className="p-4 text-sm text-muted-foreground" colSpan={9}>Sin resultados</td>
                 </tr>
@@ -455,7 +478,7 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
         {isEdit && (
           <Button variant="destructive" type="button" onClick={() => onDelete && onDelete()}>Borrar cliente</Button>
         )}
-    <Button onClick={async () => {
+  <Button onClick={async () => {
             // Normaliza fecha de contacto para validación (Date o null)
             const contactadoFechaForValidation = form.contactado
               ? (form.contactado_fecha
@@ -510,30 +533,6 @@ function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; 
             } else {
               payload.contactado_fecha = null;
             }
-            // optional Supabase upsert (best-effort, ignora errores)
-            try {
-              const sb = (await import("@/lib/supabaseClient")).getSupabase();
-              if (sb) {
-                const dbRow: ClientDBRow = {
-                  ...(payload as Omit<Client, "email" | "contactado_fecha">),
-                  email: payload.email || null,
-                  contactado_fecha: payload.contactado
-                    ? (payload.contactado_fecha instanceof Date
-                        ? payload.contactado_fecha.toISOString()
-                        : (typeof payload.contactado_fecha === "string"
-                            ? payload.contactado_fecha
-                            : new Date().toISOString()))
-                    : null,
-                };
-                const { data, error } = await sb
-                  .from("clients")
-                  .upsert(dbRow, { onConflict: "id" })
-                  .select("id, contactado, contactado_fecha")
-                  .single();
-                if (error) console.warn("Supabase: upsert client error", error.message);
-                else console.info("Supabase: upsert client ok", data);
-              }
-            } catch {}
             onSubmit(payload);
           }} className="ml-auto">{isEdit ? "Actualizar cliente" : "Guardar cliente"}</Button>
       </DialogFooter>
