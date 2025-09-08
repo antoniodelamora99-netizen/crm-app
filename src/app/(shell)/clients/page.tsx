@@ -27,12 +27,13 @@ import { Plus, ArrowUpDown } from "lucide-react";
 import type { Client, Policy } from "@/lib/types";
 import { uid } from "@/lib/types";
 import { repo, LS_KEYS } from "@/lib/storage"; // mantiene policies locales temporalmente
-import { getCurrentUser, filterByScope } from "@/lib/users";
+import { getCurrentUser, filterByScope, visibleOwnerIdsFor } from "@/lib/users";
 import { setContactado } from "@/features/clients/utils/contactado"; // aún usado para lógica de fecha local
 import { listRemoteClients, upsertRemoteClient, deleteRemoteClient, toggleRemoteContactado } from "@/lib/data/clients";
 
-// Repos locales (solo policies por ahora mientras migramos)
+// Repos locales (policies y fallback de clients mientras migramos)
 const PoliciesRepo = repo<Policy>(LS_KEYS.policies);
+const LocalClientsRepo = repo<Client>(LS_KEYS.clients);
 
 // Helpers
 const toAge = (iso?: string) => {
@@ -71,6 +72,7 @@ function ClientsPage() {
   const current = getCurrentUser();
   const allowContactToggle = current?.role === "asesor"; // promotor/gerente disabled
   const [rows, setRows] = useState<Client[]>([]);
+  const [source, setSource] = useState<'remote' | 'local'>('remote');
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -90,11 +92,25 @@ function ClientsPage() {
         if (!active) return;
         if (remote.length) {
           setRows(remote);
+          setSource('remote');
         } else {
-          // fallback: si no hay remoto (o no configurado) deja rows vacíos (o podríamos cargar local antigua)
-          setRows([]);
+          // Fallback a clientes locales si supabase no configurado o vacío
+          const local = LocalClientsRepo.list();
+          if (local.length) {
+            setRows(local);
+            setSource('local');
+          } else {
+            setRows([]);
+            setSource('remote');
+          }
         }
       } catch (e) {
+        // Intentamos fallback local si existe
+        const local = LocalClientsRepo.list();
+        if (local.length) {
+          setRows(local);
+          setSource('local');
+        }
         setLoadError("No se pudo cargar clientes remotos");
       } finally {
         if (active) setLoading(false);
@@ -104,8 +120,14 @@ function ClientsPage() {
   }, []);
 
   // Alcance por usuario (asesor/gerente/promotor)
+  // Filtro de alcance que permite registros sin ownerId (anteriores a migración)
   const scoped = useMemo<Client[]>(() => {
-    return current ? filterByScope<Client>(rows, current, (r) => r.ownerId) : rows;
+    if (!current) return rows;
+    const allowed = new Set(visibleOwnerIdsFor(current));
+    return rows.filter(r => {
+      if (!r.ownerId) return true; // mostrar huérfanos para poder asignarlos luego
+      return allowed.has(r.ownerId);
+    });
   }, [rows, current]);
 
   // Búsqueda + orden
@@ -199,6 +221,9 @@ function ClientsPage() {
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-xl font-semibold">Clientes</h2>
+        {source === 'local' && (
+          <span className="text-[11px] px-2 py-1 rounded bg-amber-100 text-amber-800 font-medium" title="Mostrando datos locales porque no se obtuvieron clientes remotos">LOCAL</span>
+        )}
         <div className="flex gap-2">
           <Input
             placeholder="Buscar por nombre, email o teléfono…"
