@@ -26,14 +26,9 @@ import { Plus, ArrowUpDown } from "lucide-react";
 
 import type { Client, Policy } from "@/lib/types";
 import { uid } from "@/lib/types";
-import { repo, LS_KEYS } from "@/lib/storage"; // mantiene policies locales temporalmente
-import { getCurrentUser, filterByScope, visibleOwnerIdsFor } from "@/lib/users";
-import { setContactado } from "@/features/clients/utils/contactado"; // aún usado para lógica de fecha local
+import { useSessionUser } from "@/lib/auth/useSessionUser";
 import { listRemoteClients, upsertRemoteClient, deleteRemoteClient, toggleRemoteContactado } from "@/lib/data/clients";
 
-// Repos locales (policies y fallback de clients mientras migramos)
-const PoliciesRepo = repo<Policy>(LS_KEYS.policies);
-const LocalClientsRepo = repo<Client>(LS_KEYS.clients);
 
 // Helpers
 const toAge = (iso?: string) => {
@@ -69,8 +64,8 @@ function fmtPhone(v?: string) {
 
 // Página
 function ClientsPage() {
-  const current = getCurrentUser();
-  const allowContactToggle = current?.role === "asesor"; // promotor/gerente disabled
+  const current = useSessionUser();
+  const allowContactToggle = Boolean(current); // RLS protege escritura; habilita si hay sesión
   const [rows, setRows] = useState<Client[]>([]);
   const [source, setSource] = useState<'remote' | 'local'>('remote');
   const [loading, setLoading] = useState<boolean>(true);
@@ -90,27 +85,9 @@ function ClientsPage() {
       try {
         const remote = await listRemoteClients();
         if (!active) return;
-        if (remote.length) {
-          setRows(remote);
-          setSource('remote');
-        } else {
-          // Fallback a clientes locales si supabase no configurado o vacío
-          const local = LocalClientsRepo.list();
-          if (local.length) {
-            setRows(local);
-            setSource('local');
-          } else {
-            setRows([]);
-            setSource('remote');
-          }
-        }
+        setRows(remote || []);
+        setSource('remote');
       } catch (e) {
-        // Intentamos fallback local si existe
-        const local = LocalClientsRepo.list();
-        if (local.length) {
-          setRows(local);
-          setSource('local');
-        }
         setLoadError("No se pudo cargar clientes remotos");
       } finally {
         if (active) setLoading(false);
@@ -119,16 +96,8 @@ function ClientsPage() {
     return () => { active = false; };
   }, []);
 
-  // Alcance por usuario (asesor/gerente/promotor)
-  // Filtro de alcance que permite registros sin ownerId (anteriores a migración)
-  const scoped = useMemo<Client[]>(() => {
-    if (!current) return rows;
-    const allowed = new Set(visibleOwnerIdsFor(current));
-    return rows.filter(r => {
-      if (!r.ownerId) return true; // mostrar huérfanos para poder asignarlos luego
-      return allowed.has(r.ownerId);
-    });
-  }, [rows, current]);
+  // Alcance: lo limita Supabase RLS; aquí no filtramos nada.
+  const scoped = rows;
 
   // Búsqueda + orden
   const filtered = useMemo(() => {
@@ -221,9 +190,6 @@ function ClientsPage() {
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-xl font-semibold">Clientes</h2>
-        {source === 'local' && (
-          <span className="text-[11px] px-2 py-1 rounded bg-amber-100 text-amber-800 font-medium" title="Mostrando datos locales porque no se obtuvieron clientes remotos">LOCAL</span>
-        )}
         <div className="flex gap-2">
           <Input
             placeholder="Buscar por nombre, email o teléfono…"
@@ -356,8 +322,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function ClientForm({ initial, onSubmit, onDelete }: { initial?: Client | null; onSubmit: (c: Client) => void; onDelete?: () => void; }) {
-  const user = getCurrentUser();
-  const allowContactToggle = user?.role === "asesor"; // promotor/gerente disabled
+  const sessionUser = useSessionUser();
+  const allowContactToggle = Boolean(sessionUser);
   const schema = z.object({
     id: z.string().min(1),
     nombre: z.string().min(1, "Nombre requerido"),
@@ -573,11 +539,7 @@ function PoliciesSummaryHover({ clientId }: { clientId: string }) {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const load = () => {
-    if (policies.length) return; // cache simple
-    const all = PoliciesRepo.list();
-    setPolicies(all.filter(p => p.clienteId === clientId));
-  };
+  const load = () => { /* TODO: cargar pólizas remotas cuando exista API */ };
   const show = () => { timerRef.current = setTimeout(() => { load(); setOpen(true); }, 350); };
   const hide = () => { if (timerRef.current) clearTimeout(timerRef.current); setOpen(false); };
 
@@ -594,12 +556,12 @@ function PoliciesSummaryHover({ clientId }: { clientId: string }) {
          onMouseEnter={show} onMouseLeave={hide}
          onFocus={show} onBlur={hide}>
       <span className="cursor-help underline decoration-dotted">
-        {policies.length}
+        {policies.length ?? 0}
       </span>
       {open && (
         <div className="absolute z-30 left-0 mt-2 w-80 max-h-80 overflow-hidden bg-white border shadow-lg rounded-md p-2 text-xs animate-in fade-in-0 zoom-in-95">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-[11px] font-semibold text-neutral-600">Pólizas: {policies.length}</span>
+            <span className="text-[11px] font-semibold text-neutral-600">Pólizas: {policies.length ?? 0}</span>
             {policies.length > 0 && (
               <span className="text-[11px] text-neutral-500">Total {totalPrima.toLocaleString("es-MX", { style: "currency", currency: (policies[0]?.moneda)||"MXN" })}</span>
             )}
