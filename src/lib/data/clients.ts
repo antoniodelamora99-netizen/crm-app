@@ -1,34 +1,32 @@
 import type { Client } from "@/lib/types";
-import { getSupabase } from "@/lib/supabaseClient";
+import { supabaseBrowser } from "@/lib/supabase/browser";
 
 // Normaliza hacia fila de BD (nullables y fechas a ISO string)
 export function clientToDB(c: Client) {
   return {
     id: c.id,
+    owner_id: c.ownerId ?? null,
     nombre: c.nombre,
-    apellidoPaterno: c.apellidoPaterno ?? null,
-    apellidoMaterno: c.apellidoMaterno ?? null,
+    apellido_paterno: c.apellidoPaterno ?? null,
+    apellido_materno: c.apellidoMaterno ?? null,
     telefono: c.telefono ?? null,
     email: c.email ?? null,
-    fechaNacimiento: c.fechaNacimiento ?? null,
+    fecha_nacimiento: c.fechaNacimiento ?? null,
     sexo: c.sexo ?? null,
-    estadoCivil: c.estadoCivil ?? null,
-    estadoResidencia: c.estadoResidencia ?? null,
+    estado_civil: c.estadoCivil ?? null,
+    estado_residencia: c.estadoResidencia ?? null,
     ocupacion: c.ocupacion ?? null,
     empresa: c.empresa ?? null,
-    ingresoHogar: c.ingresoHogar ?? null,
+    ingreso_hogar: c.ingresoHogar ?? null,
     dependientes: c.dependientes ?? null,
     fumador: c.fumador ?? null,
     fuente: c.fuente ?? null,
     estatus: c.estatus ?? null,
-    referidoPorId: c.referidoPorId ?? null,
-    asesor: c.asesor ?? null,
-    ultimoContacto: c.ultimoContacto ?? null,
+    ultimo_contacto: c.ultimoContacto ?? null,
     notas: c.notas ?? null,
-    anfRealizado: c.anfRealizado ?? null,
-    anfFecha: c.anfFecha ?? null,
-    createdAt: c.createdAt ?? new Date().toISOString(),
-    ownerId: c.ownerId ?? null,
+    anf_realizado: c.anfRealizado ?? null,
+    anf_fecha: c.anfFecha ?? null,
+    created_at: c.createdAt ?? new Date().toISOString(),
     contactado: c.contactado ?? false,
     contactado_fecha: c.contactado
       ? (c.contactado_fecha instanceof Date
@@ -41,46 +39,42 @@ export function clientToDB(c: Client) {
 export function clientFromDB(row: any): Client { // eslint-disable-line @typescript-eslint/no-explicit-any
   return {
     id: row.id,
+    ownerId: row.owner_id || undefined,
     nombre: row.nombre,
-    apellidoPaterno: row.apellidoPaterno || undefined,
-    apellidoMaterno: row.apellidoMaterno || undefined,
+    apellidoPaterno: row.apellido_paterno || undefined,
+    apellidoMaterno: row.apellido_materno || undefined,
     telefono: row.telefono || undefined,
     email: row.email || undefined,
-    fechaNacimiento: row.fechaNacimiento || undefined,
+    fechaNacimiento: row.fecha_nacimiento || undefined,
     sexo: row.sexo || undefined,
-    estadoCivil: row.estadoCivil || undefined,
-    estadoResidencia: row.estadoResidencia || undefined,
+    estadoCivil: row.estado_civil || undefined,
+    estadoResidencia: row.estado_residencia || undefined,
     ocupacion: row.ocupacion || undefined,
     empresa: row.empresa || undefined,
-    ingresoHogar: row.ingresoHogar || undefined,
+    ingresoHogar: row.ingreso_hogar || undefined,
     dependientes: row.dependientes || undefined,
     fumador: row.fumador ?? undefined,
     fuente: row.fuente || undefined,
     estatus: row.estatus || undefined,
-    referidoPorId: row.referidoPorId || undefined,
-    asesor: row.asesor || undefined,
-    ultimoContacto: row.ultimoContacto || undefined,
+    ultimoContacto: row.ultimo_contacto || undefined,
     notas: row.notas || undefined,
-    anfRealizado: row.anfRealizado ?? undefined,
-    anfFecha: row.anfFecha || undefined,
-    createdAt: row.createdAt || undefined,
-    ownerId: row.ownerId || undefined,
+    anfRealizado: row.anf_realizado ?? undefined,
+    anfFecha: row.anf_fecha || undefined,
+    createdAt: row.created_at || undefined,
     contactado: row.contactado ?? false,
     contactado_fecha: row.contactado_fecha || undefined,
   };
 }
 
 export async function listRemoteClients(): Promise<Client[]> {
-  const sb = getSupabase();
-  if (!sb) return [];
-  const { data, error } = await sb.from("clients").select("*").order("createdAt", { ascending: false });
+  const sb = supabaseBrowser();
+  const { data, error } = await sb.from("clients").select("*").order("created_at", { ascending: false });
   if (error) { console.warn("Supabase list clients error", error.message); return []; }
   return (data || []).map(clientFromDB);
 }
 
 export async function upsertRemoteClient(c: Client): Promise<Client | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
+  const sb = supabaseBrowser();
   const row = clientToDB(c);
   const { data, error } = await sb.from("clients").upsert(row, { onConflict: "id" }).select("*").single();
   if (error) { console.warn("Supabase upsert client error", error.message); return null; }
@@ -88,16 +82,14 @@ export async function upsertRemoteClient(c: Client): Promise<Client | null> {
 }
 
 export async function deleteRemoteClient(id: string): Promise<boolean> {
-  const sb = getSupabase();
-  if (!sb) return false;
+  const sb = supabaseBrowser();
   const { error } = await sb.from("clients").delete().eq("id", id);
   if (error) { console.warn("Supabase delete client error", error.message); return false; }
   return true;
 }
 
 export async function toggleRemoteContactado(c: Client, val: boolean): Promise<Client | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
+  const sb = supabaseBrowser();
   const { data, error } = await sb
     .from("clients")
     .update({
