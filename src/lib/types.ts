@@ -1,6 +1,6 @@
 // Modelos y tipos compartidos
 
-export type UserRole = "asesor" | "gerente" | "promotor";
+export type UserRole = "asesor" | "gerente" | "promotor" | "admin";
 export type User = {
   id: string;
   role: UserRole;
