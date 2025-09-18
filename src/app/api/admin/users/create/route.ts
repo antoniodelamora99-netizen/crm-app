@@ -35,7 +35,10 @@ export async function POST(req: Request) {
     const email = (body.email || '').trim()
     const password = body.password || ''
     const name = (body.name || '').trim() || null
-    const role = (body.role as Body['role']) || 'asesor'
+    const allowedRoles = ['asesor','gerente','promotor','admin'] as const
+    const role = (allowedRoles as readonly string[]).includes(String(body.role || ''))
+      ? (body.role as Body['role'])
+      : 'promotor'
     const manager_id = body.manager_id ?? null
     const promoter_id = body.promoter_id ?? null
 

@@ -21,7 +21,7 @@ export default function UsersPage() {
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
   const [form, setForm] = useState<{ email: string; name: string; password: string; role: ProfileRow['role']; manager_id: string | null; promoter_id: string | null }>({
-    email: '', name: '', password: '', role: 'asesor', manager_id: null, promoter_id: null
+    email: '', name: '', password: '', role: 'promotor', manager_id: null, promoter_id: null
   });
 
   useEffect(() => {
@@ -151,7 +151,7 @@ export default function UsersPage() {
                         const fresh = await listProfiles();
                         setRows(fresh);
                         setOpenNew(false);
-                        setForm({ email: '', name: '', password: '', role: 'asesor', manager_id: null, promoter_id: null });
+                        setForm({ email: '', name: '', password: '', role: 'promotor', manager_id: null, promoter_id: null });
                       } catch (e:any) {
                         setCreateErr(e?.message || 'No se pudo crear');
                       } finally { setCreating(false); }
