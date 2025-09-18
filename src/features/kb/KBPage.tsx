@@ -17,6 +17,8 @@ import type { KBSection, KBFile, User } from "@/lib/types";
 import { uid } from "@/lib/types";
 import { repo, LS_KEYS } from "@/lib/storage";
 import { getCurrentUser, filterByScope } from "@/lib/users";
+import { useSessionUser } from "@/lib/auth/useSessionUser";
+import { useProfile } from "@/lib/auth/useProfile";
 
 const KBRepo = repo<KBSection>(LS_KEYS.kb);
 
@@ -60,12 +62,25 @@ async function filesToKBFiles(fileList: FileList, uploaderId: string): Promise<K
 }
 
 function canManage(user: User | null): boolean {
-  return !!user && (user.role === "promotor" || user.role === "gerente");
+  return !!user && (user.role === "promotor" || user.role === "gerente" || (user as any).role === "admin");
 }
 
 /* ========================== Page ========================== */
 export default function KBPage() {
-  const user = getCurrentUser();
+  // Prefer Supabase session/profile; fallback to local demo user if present
+  const session = useSessionUser();
+  const { profile } = useProfile(session?.id);
+  const user = React.useMemo<User | null>(() => {
+    if (profile) {
+      return {
+        id: profile.id,
+        role: (profile.role as any) || "asesor",
+        name: profile.name || "Usuario",
+        password: "", // not used here
+      } as unknown as User;
+    }
+    return getCurrentUser();
+  }, [profile]);
   const [sections, setSections] = useState<KBSection[]>(KBRepo.list());
   const [q, setQ] = useState("");
   const [openNew, setOpenNew] = useState(false);
@@ -245,7 +260,7 @@ function SectionForm({
         <Input value={form.title || ""} onChange={e=>set("title", (e.target as HTMLInputElement).value)} />
       </Field>
       <Field label="Descripción (opcional)">
-        <Textarea value={form.description || ""} onChange={e=>set("description", (e.target as HTMLInputElement).value)} />
+        <Textarea value={form.description || ""} onChange={e=>set("description", (e.target as HTMLTextAreaElement).value)} />
       </Field>
 
       <Field label="Agregar archivos">
