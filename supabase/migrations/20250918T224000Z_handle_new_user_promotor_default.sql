@@ -1,4 +1,4 @@
--- Create or replace the function and trigger for profile bootstrap from auth.users
+-- Migration: ensure handle_new_user() defaults role to 'promotor'
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
