@@ -6,7 +6,12 @@ export function useSessionUser() {
   const [user, setUser] = useState<null | { id: string; email: string | null }>(null);
   useEffect(() => {
     const sb = supabaseBrowser();
-    sb.auth.getUser().then(({ data }) => setUser(data.user ? { id: data.user.id, email: data.user.email ?? null } : null));
+    // Prefer getSession first (faster than getUser in some cases)
+    sb.auth.getSession().then(({ data }) => {
+      const u = data.session?.user;
+      if (u) setUser({ id: u.id, email: u.email ?? null });
+      else return sb.auth.getUser().then(({ data }) => setUser(data.user ? { id: data.user.id, email: data.user.email ?? null } : null));
+    });
     const { data: sub } = sb.auth.onAuthStateChange((_e, s) => {
       setUser(s?.user ? { id: s.user.id, email: s.user.email ?? null } : null);
     });

@@ -40,6 +40,8 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   // Session (Supabase) + fallback a usuario local (demo)
   const sessionUser = useSessionUser()
   const { profile, loading: profileLoading } = useProfile(sessionUser?.id)
+  // Espera a que Supabase inicialice y responda getSession() para evitar redirecciones tempranas
+  const [sbChecked, setSbChecked] = useState(false)
   const [localUser, setLocalUser] = useState<{ id: string; role: Role; name: string } | null>(null)
   const [localChecked, setLocalChecked] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false) // mobile overlay nav
@@ -59,13 +61,20 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
     }
   }, [])
 
+  // Marca cuando Supabase ya resolvió el estado de sesión en el cliente
+  useEffect(() => {
+    (async () => {
+      try { await supabaseBrowser().auth.getSession() } finally { setSbChecked(true) }
+    })()
+  }, [])
+
   // Redirige a /login si no hay ni sesión Supabase ni usuario local demo
   useEffect(() => {
-    if (!localChecked) return
+    if (!localChecked || !sbChecked) return
     if (!sessionUser && !localUser) {
       router.replace('/login')
     }
-  }, [sessionUser, localUser, localChecked, router])
+  }, [sessionUser, localUser, localChecked, sbChecked, router])
 
   // Derive role flags (keep outside of render branching to preserve hook order)
   const effectiveRole: Role | undefined = (profile?.role as Role) || localUser?.role
@@ -142,7 +151,7 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   const hasMountedRef = useRef(false)
   useEffect(() => { hasMountedRef.current = true }, [])
 
-  const loadingUser = (!sessionUser && !localChecked) || (Boolean(sessionUser) && profileLoading);
+  const loadingUser = (!sessionUser && (!localChecked || !sbChecked)) || (Boolean(sessionUser) && profileLoading);
 
   // Formatea fecha de build en UTC de forma determinista (YYYY-MM-DD HH:MM UTC)
   function formatBuildDateUTC(iso: string): string {
