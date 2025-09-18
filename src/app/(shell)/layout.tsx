@@ -328,6 +328,14 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
               </Link>
             ))}
           </nav>
+          {/* Footer con engrane de configuración */}
+          <div className={(sidebarCollapsed ? "px-1" : "px-3") + " pb-4"}>
+            <Link href="/account" className={itemClass('/account')} title="Configuración">
+              {/* usando Wrench por ya estar importado; podría ser Gear */}
+              <Wrench size={18} className="shrink-0" />
+              {!sidebarCollapsed && <span>Configuración</span>}
+            </Link>
+          </div>
         </aside>
 
         {/* CONTENIDO */}
