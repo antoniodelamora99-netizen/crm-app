@@ -10,6 +10,7 @@ import { LS_KEYS } from '@/lib/storage'
 import { useSessionUser } from '@/lib/auth/useSessionUser'
 import { useProfile } from '@/lib/auth/useProfile'
 import { supabaseBrowser } from '@/lib/supabase/browser'
+import { ensureProfile } from '@/lib/auth/ensureProfile'
 import {
   BarChart3,
   ListChecks,
@@ -68,6 +69,16 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
     })()
   }, [])
 
+  // Auto-upsert del perfil si hay sesión pero no existe fila en profiles
+  useEffect(() => {
+    if (!sbChecked) return;
+    if (!sessionUser) return;
+    if (profileLoading) return;
+    if (profile) return;
+    // Crea/actualiza el perfil con nombre=correo si no hay nombre; rol por defecto lo define el backend
+    ensureProfile().catch(() => {/* noop */});
+  }, [sbChecked, sessionUser, profile, profileLoading])
+
   // Redirige a /login si no hay ni sesión Supabase ni usuario local demo
   useEffect(() => {
     if (!localChecked || !sbChecked) return
@@ -80,14 +91,19 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   const effectiveRole: Role | undefined = (profile?.role as Role) || localUser?.role
   const displayName: string | undefined = profile?.name || localUser?.name
   const isAsesor = effectiveRole === 'asesor'
-  const isManager = effectiveRole === 'gerente' || effectiveRole === 'promotor' || effectiveRole === 'admin'
+  // Control granular de visibilidad
+  const canSeeClients = !!effectiveRole && (
+    effectiveRole === 'asesor' || effectiveRole === 'gerente' || effectiveRole === 'promotor' || effectiveRole === 'admin'
+  )
+  // Vistas de control (Asesores/Usuarios) solo para gerente o admin (NO promotor)
+  const canSeeControl = effectiveRole === 'gerente' || effectiveRole === 'admin'
 
   // Iconized menu; compute once from role flags
   const menu: MenuItem[] = useMemo(
     () => [
       { href: '/dashboard', label: 'Dashboard', icon: BarChart3, show: true },
       { href: '/pending', label: 'Pendientes', icon: ListChecks, show: true },
-  { href: '/clients', label: 'Clientes', icon: Users, show: isAsesor || isManager }, // listado visible a asesores y mandos; RLS limita alcance
+  { href: '/clients', label: 'Clientes', icon: Users, show: canSeeClients }, // visible a asesor/gerente/promotor/admin; RLS limita alcance
       { href: '/policies', label: 'Pólizas', icon: ShieldCheck, show: true },
       { href: '/activities', label: 'Citas / Actividades', icon: CalendarDays, show: true },
       { href: '/goals', label: 'Metas', icon: Target, show: true },
@@ -96,10 +112,10 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   { href: '/status', label: 'Estado', icon: Wrench, show: true },
       { href: '/tools', label: 'Herramientas', icon: Wrench, show: true },
       // vistas de control
-      { href: '/team', label: 'Asesores', icon: Users, show: isManager },
-      { href: '/users', label: 'Usuarios', icon: Users, show: isManager },
+  { href: '/team', label: 'Asesores', icon: Users, show: canSeeControl },
+  { href: '/users', label: 'Usuarios', icon: Users, show: canSeeControl },
     ],
-    [isAsesor, isManager]
+  [isAsesor, canSeeClients, canSeeControl]
   )
 
   // Subtle logout (no big red button)
