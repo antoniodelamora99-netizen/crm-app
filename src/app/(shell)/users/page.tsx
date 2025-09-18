@@ -39,6 +39,8 @@ export default function UsersPage() {
 
   const canView = !!profile && (profile.role === 'gerente' || profile.role === 'promotor' || profile.role === 'admin');
   const isAdmin = profile?.role === 'admin';
+  const isPromoter = profile?.role === 'promotor';
+  const isManager = profile?.role === 'gerente';
   if (loadingProfile || !rows) {
     return <div className="p-6 text-sm text-neutral-500">Cargando usuarios…</div>
   }
@@ -73,7 +75,7 @@ export default function UsersPage() {
         <h2 className="text-xl font-semibold">Usuarios</h2>
         <div className="flex gap-2">
           <Input placeholder="Buscar por nombre, email o rol…" value={q} onChange={e => setQ((e.target as HTMLInputElement).value)} className="w-64" />
-          {isAdmin && (
+          {(isAdmin || isPromoter || isManager) && (
             <Dialog open={openNew} onOpenChange={setOpenNew}>
               <DialogTrigger asChild>
                 <Button>Nuevo</Button>
@@ -98,7 +100,11 @@ export default function UsersPage() {
                     <Select value={form.role} onValueChange={(v)=>setForm(f=>({ ...f, role: v as ProfileRow['role'] }))}>
                       <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
                       <SelectContent>
-                        {(['asesor','gerente','promotor','admin'] as ProfileRow['role'][]).map(r => (
+                        {(
+                          isAdmin ? (['asesor','gerente','promotor','admin'] as const) :
+                          isPromoter ? (['asesor','gerente','promotor'] as const) :
+                          isManager ? (['asesor'] as const) : ([] as const)
+                        ).map(r => (
                           <SelectItem key={r} value={r}>{r}</SelectItem>
                         ))}
                       </SelectContent>
@@ -106,7 +112,7 @@ export default function UsersPage() {
                   </div>
                   {/* Jerarquía */}
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
+                    <div className={isManager ? 'opacity-60 pointer-events-none' : ''}>
                       <label className="block text-sm font-medium text-slate-700">Promotor</label>
                       <Select value={form.promoter_id || ''} onValueChange={(v)=>setForm(f=>({ ...f, promoter_id: v || null }))}>
                         <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
@@ -117,7 +123,7 @@ export default function UsersPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
+                    <div className={isManager ? 'opacity-60 pointer-events-none' : ''}>
                       <label className="block text-sm font-medium text-slate-700">Gerente</label>
                       <Select value={form.manager_id || ''} onValueChange={(v)=>setForm(f=>({ ...f, manager_id: v || null }))}>
                         <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
@@ -141,9 +147,31 @@ export default function UsersPage() {
                         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) throw new Error('Email inválido');
                         if (form.password.length < 6) throw new Error('La contraseña debe tener al menos 6 caracteres');
                         const accessToken = (await supabaseBrowser().auth.getSession()).data.session?.access_token;
+                        // Enforce hierarchy client-side too (mirrors server rules)
+                        const payload: any = {
+                          email: em,
+                          password: form.password,
+                          name: form.name.trim() || undefined,
+                          role: form.role,
+                          manager_id: form.manager_id,
+                          promoter_id: form.promoter_id
+                        };
+                        if (isManager) {
+                          // gerente solo crea asesores, fuerza su manager_id; promotor se infiere en server
+                          payload.role = 'asesor';
+                          payload.manager_id = profile?.id || null;
+                        } else if (isPromoter) {
+                          // si crea asesor/gerente, preasignar promoter_id a sí mismo
+                          if (payload.role === 'asesor' || payload.role === 'gerente') {
+                            payload.promoter_id = profile?.id || payload.promoter_id || null;
+                          }
+                          if (payload.role === 'promotor') {
+                            payload.manager_id = null; payload.promoter_id = null;
+                          }
+                        }
                         const res = await fetch('/api/admin/users/create', {
                           method: 'POST', headers: { 'content-type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
-                          body: JSON.stringify({ email: em, password: form.password, name: form.name.trim() || undefined, role: form.role, manager_id: form.manager_id, promoter_id: form.promoter_id })
+                          body: JSON.stringify(payload)
                         });
                         const json = await res.json();
                         if (!res.ok) throw new Error(json?.error || 'Error creando usuario');

@@ -22,25 +22,52 @@ export async function POST(req: Request) {
     const { data: userData, error: userErr } = await sb.auth.getUser(token)
     if (userErr || !userData?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const callerId = userData.user.id
-    // AuthZ: caller must be admin in profiles
+    // AuthZ: caller must be admin/promotor/gerente (with constraints)
     const { data: callerProfile, error: profErr } = await sb
       .from('profiles')
-      .select('id, role')
+      .select('id, role, promoter_id')
       .eq('id', callerId)
       .single()
-    if (profErr || !callerProfile || callerProfile.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    if (profErr || !callerProfile) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     const body = (await req.json()) as Partial<Body>
     const email = (body.email || '').trim()
     const password = body.password || ''
     const name = (body.name || '').trim() || null
     const allowedRoles = ['asesor','gerente','promotor','admin'] as const
-    const role = (allowedRoles as readonly string[]).includes(String(body.role || ''))
+    const requestedRole: Body['role'] | undefined = (allowedRoles as readonly string[]).includes(String(body.role || ''))
       ? (body.role as Body['role'])
-      : 'promotor'
-    const manager_id = body.manager_id ?? null
-    const promoter_id = body.promoter_id ?? null
+      : undefined
+
+    // Compute permissions and enforced hierarchy
+    let role: Body['role'] = requestedRole || 'promotor'
+    let manager_id: string | null = body.manager_id ?? null
+    let promoter_id: string | null = body.promoter_id ?? null
+
+    if (callerProfile.role === 'admin') {
+      // admin: can create any role; keep provided ids
+      role = requestedRole || 'promotor'
+    } else if (callerProfile.role === 'promotor') {
+      // promotor: can create asesor/gerente/promotor; default promoter_id to self for asesor/gerente; for promotor keep null
+      if (!requestedRole) role = 'promotor'
+      if (role === 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      if (role === 'asesor' || role === 'gerente') {
+        if (!promoter_id) promoter_id = callerId
+      }
+      if (role === 'promotor') {
+        promoter_id = null // promotores no tienen promotor asignado
+        manager_id = null
+      }
+    } else if (callerProfile.role === 'gerente') {
+      // gerente: can only create asesores; must belong to this gerente; propagate gerente's promoter to keep chain
+      if (requestedRole && requestedRole !== 'asesor') {
+        return NextResponse.json({ error: 'Solo puedes crear asesores' }, { status: 403 })
+      }
+      role = 'asesor'
+      manager_id = callerId // forzar gerencia del creador
+      if (!promoter_id) promoter_id = callerProfile.promoter_id ?? null
+    } else {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: 'Email inválido' }, { status: 400 })
@@ -59,7 +86,7 @@ export async function POST(req: Request) {
     const uid = created.user?.id
     if (!uid) return NextResponse.json({ error: 'No se obtuvo ID de usuario' }, { status: 500 })
 
-    const { data: prof, error: upErr } = await sb
+  const { data: prof, error: upErr } = await sb
       .from('profiles')
       .upsert({ id: uid, email, display_name: name || email, role, manager_id, promoter_id }, { onConflict: 'id' })
       .select('id, email, display_name, role, manager_id, promoter_id')
