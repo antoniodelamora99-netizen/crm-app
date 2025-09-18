@@ -24,13 +24,14 @@ export function getUsers(): User[] {
     const parsed: unknown = JSON.parse(raw);
     if (Array.isArray(parsed)) {
       // Narrow each element to a partial User shape; fill required fields if missing
-      return parsed.map((u): User => {
+    return parsed.map((u): User => {
         const base: Partial<User> = typeof u === "object" && u !== null ? (u as Record<string, unknown>) : {};
         return {
           id: String(base.id || crypto.randomUUID()),
             role: (base.role === "promotor" || base.role === "gerente" || base.role === "asesor") ? base.role : "asesor",
           name: typeof base.name === "string" ? base.name : "Usuario",
-          username: typeof base.username === "string" ? base.username : "user" + Math.random().toString(36).slice(2,6),
+      email: typeof (base as any).email === "string" ? (base as any).email : undefined,
+          username: typeof base.username === "string" ? base.username : undefined,
           password: typeof base.password === "string" ? base.password : "1234",
           startDate: typeof base.startDate === "string" ? base.startDate : undefined,
           managerId: typeof base.managerId === "string" ? base.managerId : undefined,

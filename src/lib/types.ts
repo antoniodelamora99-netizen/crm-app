@@ -5,7 +5,8 @@ export type User = {
   id: string;
   role: UserRole;
   name: string;
-  username: string;
+  email?: string;
+  username?: string;
   password: string;
   startDate?: string;
   managerId?: string;

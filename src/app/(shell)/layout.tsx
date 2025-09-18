@@ -7,6 +7,9 @@ import { getCurrentUser } from '@/lib/users'
 import { APP_VERSION } from '@/lib/version'
 import { BUILD_COMMIT_SHORT, BUILD_DATE_ISO } from '@/lib/buildMeta'
 import { LS_KEYS } from '@/lib/storage'
+import { useSessionUser } from '@/lib/auth/useSessionUser'
+import { useProfile } from '@/lib/auth/useProfile'
+import { supabaseBrowser } from '@/lib/supabase/browser'
 import {
   BarChart3,
   ListChecks,
@@ -23,7 +26,7 @@ import {
   ChevronRight
 } from 'lucide-react'
 
-type Current = { id: string; role: 'asesor' | 'gerente' | 'promotor'; name: string }
+type Role = 'asesor' | 'gerente' | 'promotor' | 'admin'
 
 // Local type for nav items with an optional role-gate
 type MenuItem = {
@@ -34,7 +37,11 @@ type MenuItem = {
 }
 
 export default function ShellLayout({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<Current | null>(null)
+  // Session (Supabase) + fallback a usuario local (demo)
+  const sessionUser = useSessionUser()
+  const { profile, loading: profileLoading } = useProfile(sessionUser?.id)
+  const [localUser, setLocalUser] = useState<{ id: string; role: Role; name: string } | null>(null)
+  const [localChecked, setLocalChecked] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false) // mobile overlay nav
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false) // desktop collapse
   // refs para gestos táctiles
@@ -42,32 +49,42 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   const router = useRouter()
   const pathname = usePathname()
 
-  // Load current user (client-side local storage based auth)
+  // Carga usuario local (demo) como fallback si no hay sesión de Supabase
   useEffect(() => {
-    const u = getCurrentUser()
-    if (!u) {
-      router.replace('/login')
-      return
+    try {
+      const u = getCurrentUser()
+      if (u) setLocalUser({ id: u.id, role: u.role as Role, name: u.name })
+    } finally {
+      setLocalChecked(true)
     }
-    setUser({ id: u.id, role: u.role as Current['role'], name: u.name })
-  }, [router])
+  }, [])
+
+  // Redirige a /login si no hay ni sesión Supabase ni usuario local demo
+  useEffect(() => {
+    if (!localChecked) return
+    if (!sessionUser && !localUser) {
+      router.replace('/login')
+    }
+  }, [sessionUser, localUser, localChecked, router])
 
   // Derive role flags (keep outside of render branching to preserve hook order)
-  const role = user?.role
-  const isAsesor = role === 'asesor'
-  const isManager = role === 'gerente' || role === 'promotor'
+  const effectiveRole: Role | undefined = (profile?.role as Role) || localUser?.role
+  const displayName: string | undefined = profile?.name || localUser?.name
+  const isAsesor = effectiveRole === 'asesor'
+  const isManager = effectiveRole === 'gerente' || effectiveRole === 'promotor' || effectiveRole === 'admin'
 
   // Iconized menu; compute once from role flags
   const menu: MenuItem[] = useMemo(
     () => [
       { href: '/dashboard', label: 'Dashboard', icon: BarChart3, show: true },
       { href: '/pending', label: 'Pendientes', icon: ListChecks, show: true },
-      { href: '/clients', label: 'Clientes', icon: Users, show: isAsesor }, // asesores gestionan clientes
+  { href: '/clients', label: 'Clientes', icon: Users, show: isAsesor || isManager }, // listado visible a asesores y mandos; RLS limita alcance
       { href: '/policies', label: 'Pólizas', icon: ShieldCheck, show: true },
       { href: '/activities', label: 'Citas / Actividades', icon: CalendarDays, show: true },
       { href: '/goals', label: 'Metas', icon: Target, show: true },
       { href: '/medical', label: 'Cuestionario Médico', icon: Stethoscope, show: true },
       { href: '/kb', label: 'Base de Conocimiento', icon: BookOpenText, show: true },
+  { href: '/status', label: 'Estado', icon: Wrench, show: true },
       { href: '/tools', label: 'Herramientas', icon: Wrench, show: true },
       // vistas de control
       { href: '/team', label: 'Asesores', icon: Users, show: isManager },
@@ -77,7 +94,8 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   )
 
   // Subtle logout (no big red button)
-  const logout = () => {
+  const logout = async () => {
+    try { await supabaseBrowser().auth.signOut() } catch {}
     try { localStorage.removeItem(LS_KEYS.currentUser) } catch {}
     router.replace('/login')
   }
@@ -124,7 +142,7 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   const hasMountedRef = useRef(false)
   useEffect(() => { hasMountedRef.current = true }, [])
 
-  const loadingUser = !user;
+  const loadingUser = (!sessionUser && !localChecked) || (Boolean(sessionUser) && profileLoading);
 
   // Formatea fecha de build en UTC de forma determinista (YYYY-MM-DD HH:MM UTC)
   function formatBuildDateUTC(iso: string): string {
@@ -203,8 +221,8 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
             </button>
             <div className="text-[11px] tracking-wide text-slate-500 -mt-0.5">ASESORÍA INTEGRAL EN RIESGOS</div>
             <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
-              <div className="truncate text-[13px] font-semibold text-slate-800">{user?.name || '...'}</div>
-              <div className="text-[11px] uppercase tracking-wide text-slate-500">{user?.role || '—'}</div>
+              <div className="truncate text-[13px] font-semibold text-slate-800">{displayName || '...'}</div>
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">{effectiveRole || '—'}</div>
             </div>
           </div>
           <nav className="flex-1 overflow-auto px-3 py-4 space-y-1">
@@ -265,8 +283,8 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
 
             {/* Usuario compacto */}
           <div className={"mt-4 rounded-lg bg-slate-50 " + (sidebarCollapsed ? "mx-2 px-1 py-2" : "px-3 py-2")}> 
-            <div className="truncate text-[13px] font-semibold text-slate-800" title={user?.name}>{sidebarCollapsed ? (user?.name?.split(' ')[0] || '...') : (user?.name || '...')}</div>
-            {!sidebarCollapsed && <div className="text-[11px] uppercase tracking-wide text-slate-500">{user?.role || '—'}</div>}
+            <div className="truncate text-[13px] font-semibold text-slate-800" title={displayName}>{sidebarCollapsed ? ((displayName || '...').split(' ')[0]) : (displayName || '...')}</div>
+            {!sidebarCollapsed && <div className="text-[11px] uppercase tracking-wide text-slate-500">{effectiveRole || '—'}</div>}
             {!sidebarCollapsed && (
               <button
                 onClick={logout}

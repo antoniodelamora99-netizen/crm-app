@@ -96,7 +96,7 @@ export default function UsersPage() {
     return base.filter(u => {
       return (
         (u.name || "").toLowerCase().includes(t) ||
-        (u.username || "").toLowerCase().includes(t) ||
+        (u.email || "").toLowerCase().includes(t) ||
         (u.role || "").toLowerCase().includes(t)
       );
     });
@@ -132,7 +132,7 @@ export default function UsersPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Usuarios</h2>
         <div className="flex gap-2">
-          <Input placeholder="Buscar por nombre, usuario o rol…" value={q} onChange={e=>setQ((e.target as HTMLInputElement).value)} className="w-64" />
+          <Input placeholder="Buscar por nombre, email o rol…" value={q} onChange={e=>setQ((e.target as HTMLInputElement).value)} className="w-64" />
           {(currentUser && (currentUser.role === "promotor" || currentUser.role === "gerente")) && (
             <Dialog open={openNew} onOpenChange={setOpenNew}>
               <DialogTrigger asChild><Button><Plus className="mr-2" size={16}/>Nuevo</Button></DialogTrigger>
@@ -158,7 +158,7 @@ export default function UsersPage() {
             <thead className="bg-neutral-100 text-neutral-700">
               <tr>
                 <th className="text-left p-3">Nombre</th>
-                <th className="text-left p-3">Usuario</th>
+                <th className="text-left p-3">Email</th>
                 <th className="text-left p-3">Rol</th>
                 <th className="text-left p-3">Inicio</th>
                 <th className="text-left p-3">Gerente</th>
@@ -173,7 +173,7 @@ export default function UsersPage() {
                 return (
                   <tr key={u.id} className="border-t">
                     <td className="p-3">{u.name}</td>
-                    <td className="p-3">{u.username}</td>
+                    <td className="p-3">{u.email || "-"}</td>
                     <td className="p-3"><Badge className={roleBadge[u.role]}>{u.role}</Badge></td>
                     <td className="p-3">{u.startDate || "—"}</td>
                     <td className="p-3">{manager?.name || "—"}</td>
@@ -249,7 +249,7 @@ function NewUserForm({
     id: Math.random().toString(36).slice(2,10),
     role: roleDefault,
     name: "",
-    username: "",
+  email: "",
     password: "",
     startDate: new Date().toISOString().slice(0,10),
     managerId: undefined,
@@ -305,8 +305,8 @@ function NewUserForm({
           </SelectContent>
         </Select>
       </Field>
-      <Field label="Nombre completo"><Input value={form.name} onChange={e=>set("name", (e.target as HTMLInputElement).value)} /></Field>
-      <Field label="Usuario (login)"><Input value={form.username} onChange={e=>set("username", (e.target as HTMLInputElement).value)} /></Field>
+  <Field label="Nombre completo"><Input value={form.name} onChange={e=>set("name", (e.target as HTMLInputElement).value)} /></Field>
+  <Field label="Correo electrónico"><Input type="email" value={form.email || ""} onChange={e=>set("email", (e.target as HTMLInputElement).value)} /></Field>
       <Field label="Contraseña"><Input type="password" value={form.password} onChange={e=>set("password", (e.target as HTMLInputElement).value)} /></Field>
       <Field label="Fecha de inicio"><Input type="date" value={form.startDate || ""} onChange={e=>set("startDate", (e.target as HTMLInputElement).value)} /></Field>
 
@@ -325,8 +325,12 @@ function NewUserForm({
         <Button
           className="w-full"
           onClick={()=>{
-            if (!form.name.trim() || !form.username.trim() || !form.password.trim()) {
-              alert("Nombre, usuario y contraseña son obligatorios.");
+            if (!form.name.trim() || !form.email?.trim() || !form.password.trim()) {
+              alert("Nombre, email y contraseña son obligatorios.");
+              return;
+            }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email!)) {
+              alert("Ingresa un email válido.");
               return;
             }
             if (form.role === "asesor" && !form.managerId) {
@@ -364,8 +368,8 @@ function EditUserForm({
 
   return (
     <div className="grid grid-cols-2 gap-3">
-      <Field label="Nombre completo"><Input value={form.name} onChange={e=>set("name", (e.target as HTMLInputElement).value)} /></Field>
-      <Field label="Usuario (login)"><Input value={form.username} onChange={e=>set("username", (e.target as HTMLInputElement).value)} /></Field>
+  <Field label="Nombre completo"><Input value={form.name} onChange={e=>set("name", (e.target as HTMLInputElement).value)} /></Field>
+  <Field label="Correo electrónico"><Input type="email" value={form.email || ""} onChange={e=>set("email", (e.target as HTMLInputElement).value)} /></Field>
       <Field label="Contraseña (opcional)"><Input type="password" value={form.password || ""} onChange={e=>set("password", (e.target as HTMLInputElement).value)} placeholder="Deja igual si no cambia" /></Field>
       <Field label="Fecha de inicio"><Input type="date" value={form.startDate || ""} onChange={e=>set("startDate", (e.target as HTMLInputElement).value)} /></Field>
 
@@ -419,8 +423,12 @@ function EditUserForm({
         <Button
           className="w-full"
           onClick={()=>{
-            if (!form.name.trim() || !form.username.trim()) {
-              alert("Nombre y usuario son obligatorios.");
+            if (!form.name.trim() || !form.email?.trim()) {
+              alert("Nombre y email son obligatorios.");
+              return;
+            }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email!)) {
+              alert("Ingresa un email válido.");
               return;
             }
             if (form.role === "asesor" && !form.managerId) {

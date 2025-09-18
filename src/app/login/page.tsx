@@ -2,29 +2,51 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { getUsers, setCurrentUser } from '@/lib/users'
+import { supabaseBrowser } from '@/lib/supabase/browser'
+import { ensureProfile } from '@/lib/auth/ensureProfile'
 
 export default function LoginPage() {
   const router = useRouter()
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const users = getUsers()
+  const [loading, setLoading] = useState(false)
+  const [otpSent, setOtpSent] = useState(false)
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setLoading(true)
+    try {
+      const em = email.trim()
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+        throw new Error('Ingresa un email válido')
+      }
+      const sb = supabaseBrowser()
+      const { error } = await sb.auth.signInWithPassword({ email: em, password })
+  if (error) throw error
+  await ensureProfile()
+      router.replace('/dashboard')
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo iniciar sesión')
+    } finally { setLoading(false) }
+  }
 
-    const u = users.find(
-      (x) => x.username?.trim() === username.trim() && x.password === password
-    )
-    if (!u) {
-      setError('Usuario o contraseña incorrectos.')
-      return
-    }
-
-    setCurrentUser(u.id)
-    router.replace('/dashboard') // después del login, al dashboard (dentro de (shell))
+  const sendMagicLink = async () => {
+    setError(null)
+    setLoading(true)
+    try {
+      const em = email.trim()
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+        throw new Error('Ingresa un email válido')
+      }
+      const sb = supabaseBrowser()
+      const { error } = await sb.auth.signInWithOtp({ email: em, options: { emailRedirectTo: typeof window !== 'undefined' ? window.location.origin + '/dashboard' : undefined } })
+      if (error) throw error
+      setOtpSent(true)
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo enviar el enlace')
+    } finally { setLoading(false) }
   }
 
   return (
@@ -37,12 +59,13 @@ export default function LoginPage() {
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700">Usuario</label>
+            <label className="block text-sm font-medium text-slate-700">Correo electrónico</label>
             <input
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="ej. ase-juan"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="tucorreo@empresa.com"
               autoFocus
             />
           </div>
@@ -53,7 +76,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••"
+              placeholder="••••••••"
             />
           </div>
 
@@ -65,15 +88,22 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            className="w-full rounded-md bg-black px-3 py-2 text-sm font-semibold text-white hover:bg-neutral-900 active:translate-y-px focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black"
+            disabled={loading}
+            className="w-full rounded-md bg-black px-3 py-2 text-sm font-semibold text-white hover:bg-neutral-900 active:translate-y-px focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black disabled:opacity-60"
           >
-            Iniciar sesión
+            {loading ? 'Ingresando…' : 'Iniciar sesión'}
           </button>
         </form>
 
-        <div className="mt-4 text-[11px] text-slate-500">
-          Usuarios demo: <code>ase-juan / 1234</code>, <code>ger-pilar / 1234</code>,{' '}
-          <code>prom-antonio / 1234</code>
+        <div className="mt-4 grid gap-2">
+          <button
+            onClick={sendMagicLink}
+            disabled={loading || !email}
+            className="w-full rounded-md bg-slate-800 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700 active:translate-y-px disabled:opacity-60"
+          >
+            Enviarme enlace mágico
+          </button>
+          {otpSent && <div className="text-[12px] text-slate-600">Revisa tu correo para completar el acceso.</div>}
         </div>
       </div>
     </div>
