@@ -76,7 +76,45 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'La contraseña debe tener al menos 6 caracteres' }, { status: 400 })
     }
 
-  const { data: created, error: createErr } = await sb.auth.admin.createUser({
+    // Validate hierarchy ids (when present) against expected roles
+    const checkIdRole = async (id: string, expected: Body['role']): Promise<boolean> => {
+      const { data, error } = await sb.from('profiles').select('id, role').eq('id', id).single();
+      if (error || !data) return false;
+      return data.role === expected;
+    };
+
+    if (role === 'gerente') {
+      // gerente debe tener promoter_id (promotor)
+      if (!promoter_id) promoter_id = callerProfile.role === 'promotor' ? callerId : promoter_id;
+      if (!promoter_id) return NextResponse.json({ error: 'Falta asignar promotor al gerente' }, { status: 400 });
+      const ok = await checkIdRole(promoter_id, 'promotor');
+      if (!ok) return NextResponse.json({ error: 'promoter_id no corresponde a un promotor' }, { status: 400 });
+      // manager para gerente no aplica
+      manager_id = null;
+    }
+
+    if (role === 'asesor') {
+      // manager_id opcional; si viene, debe ser gerente
+      if (manager_id) {
+        const ok = await checkIdRole(manager_id, 'gerente');
+        if (!ok) return NextResponse.json({ error: 'manager_id no corresponde a un gerente' }, { status: 400 });
+      }
+      // promoter_id opcional; si viene, debe ser promotor
+      if (promoter_id) {
+        const ok = await checkIdRole(promoter_id, 'promotor');
+        if (!ok) return NextResponse.json({ error: 'promoter_id no corresponde a un promotor' }, { status: 400 });
+      }
+    }
+
+    if (role === 'promotor') {
+      // promotor no debe tener manager/promoter
+      manager_id = null; promoter_id = null;
+    }
+    if (role === 'admin') {
+      manager_id = null; promoter_id = null;
+    }
+
+    const { data: created, error: createErr } = await sb.auth.admin.createUser({
       email,
       password,
       user_metadata: name ? { name } : undefined,
@@ -86,12 +124,16 @@ export async function POST(req: Request) {
     const uid = created.user?.id
     if (!uid) return NextResponse.json({ error: 'No se obtuvo ID de usuario' }, { status: 500 })
 
-  const { data: prof, error: upErr } = await sb
+    const { data: prof, error: upErr } = await sb
       .from('profiles')
       .upsert({ id: uid, email, display_name: name || email, role, manager_id, promoter_id }, { onConflict: 'id' })
       .select('id, email, display_name, role, manager_id, promoter_id')
       .single()
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
+    if (upErr) {
+      // Rollback: borrar el usuario de Auth para evitar huérfanos
+      try { await sb.auth.admin.deleteUser(uid) } catch {}
+      return NextResponse.json({ error: upErr.message }, { status: 500 })
+    }
 
     return NextResponse.json({ ok: true, id: uid, profile: prof }, { status: 200 })
   } catch (e: any) {
