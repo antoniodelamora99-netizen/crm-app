@@ -90,32 +90,27 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   // Derive role flags (keep outside of render branching to preserve hook order)
   const effectiveRole: Role | undefined = (profile?.role as Role) || localUser?.role
   const displayName: string | undefined = profile?.name || localUser?.name
-  const isAsesor = effectiveRole === 'asesor'
-  // Control granular de visibilidad
-  const canSeeClients = !!effectiveRole && (
-    effectiveRole === 'asesor' || effectiveRole === 'gerente' || effectiveRole === 'promotor' || effectiveRole === 'admin'
-  )
-  // Vistas de control (Asesores/Usuarios) solo para gerente o admin (NO promotor)
-  const canSeeControl = effectiveRole === 'gerente' || effectiveRole === 'admin'
+  // Siempre mostrar las pestañas de Clientes, Asesores y Usuarios en la barra lateral
+  // La visibilidad/alcance de datos queda protegida por RLS y lógica interna de cada página.
 
   // Iconized menu; compute once from role flags
   const menu: MenuItem[] = useMemo(
     () => [
       { href: '/dashboard', label: 'Dashboard', icon: BarChart3, show: true },
       { href: '/pending', label: 'Pendientes', icon: ListChecks, show: true },
-  { href: '/clients', label: 'Clientes', icon: Users, show: canSeeClients }, // visible a asesor/gerente/promotor/admin; RLS limita alcance
+      { href: '/clients', label: 'Clientes', icon: Users, show: true },
       { href: '/policies', label: 'Pólizas', icon: ShieldCheck, show: true },
       { href: '/activities', label: 'Citas / Actividades', icon: CalendarDays, show: true },
       { href: '/goals', label: 'Metas', icon: Target, show: true },
       { href: '/medical', label: 'Cuestionario Médico', icon: Stethoscope, show: true },
       { href: '/kb', label: 'Base de Conocimiento', icon: BookOpenText, show: true },
-  { href: '/status', label: 'Estado', icon: Wrench, show: true },
+      { href: '/status', label: 'Estado', icon: Wrench, show: true },
       { href: '/tools', label: 'Herramientas', icon: Wrench, show: true },
-      // vistas de control
-  { href: '/team', label: 'Asesores', icon: Users, show: canSeeControl },
-  { href: '/users', label: 'Usuarios', icon: Users, show: canSeeControl },
+      // vistas de control (visibles para todos; acciones internas seguirán validadas por backend/RLS)
+      { href: '/team', label: 'Asesores', icon: Users, show: true },
+      { href: '/users', label: 'Usuarios', icon: Users, show: true },
     ],
-  [isAsesor, canSeeClients, canSeeControl]
+    []
   )
 
   // Subtle logout (no big red button)
