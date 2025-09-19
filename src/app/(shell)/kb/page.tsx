@@ -19,7 +19,8 @@ import { Badge } from "@/components/ui/badge";
 import { FileText, Plus, MoreVertical, UploadCloud, Trash2, Pencil } from "lucide-react";
 
 import { repo, LS_KEYS } from "@/lib/storage";
-import { getCurrentUser } from "@/lib/users";
+import { useSessionUser } from "@/lib/auth/useSessionUser";
+import { useProfile } from "@/lib/auth/useProfile";
 import type { KBSection, KBFile, User } from "@/lib/types";
 import { uid } from "@/lib/types";
 
@@ -31,15 +32,16 @@ const KBRepo = repo<KBSection>(LS_KEYS.kb);
 // ================================
 // Permisos
 // ================================
-function canManage(user: User | null) {
-  return user?.role === "promotor" || user?.role === "gerente";
+function canManage(role?: string | null) {
+  return role === "promotor" || role === "gerente" || role === "admin";
 }
 
 // ================================
 // Página
 // ================================
 export default function KBPage() {
-  const [me, setMe] = useState<User | null>(null);
+  const session = useSessionUser();
+  const { profile } = useProfile(session?.id);
   const [sections, setSections] = useState<KBSection[]>([]);
   const [q, setQ] = useState("");
   const [openNew, setOpenNew] = useState(false);
@@ -53,7 +55,6 @@ export default function KBPage() {
   });
 
   useEffect(() => {
-    setMe(getCurrentUser());
     setSections(KBRepo.list());
   }, []);
 
@@ -79,7 +80,7 @@ export default function KBPage() {
       title: data.title.trim(),
       description: (data.description || "").trim(),
       files: [],
-      ownerId: me?.id,
+  ownerId: profile?.id,
     };
     setSections((prev) => [s, ...prev]);
   };
@@ -108,7 +109,7 @@ export default function KBPage() {
                 type: f.type || "application/octet-stream",
                 dataUrl: String(reader.result || ""),
                 uploadedAt: new Date().toISOString(),
-                uploadedById: me?.id || "unknown",
+                uploadedById: profile?.id || "unknown",
               });
             reader.onerror = () => reject(reader.error);
             reader.readAsDataURL(f);
@@ -140,7 +141,7 @@ export default function KBPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
-          {canManage(me) && (
+          {canManage(profile?.role) && (
             <Dialog open={openNew} onOpenChange={setOpenNew}>
               <DialogTrigger asChild>
                 <Button>
@@ -187,21 +188,21 @@ export default function KBPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem
-                        disabled={!canManage(me)}
+                        disabled={!canManage(profile?.role)}
                         onClick={() => setFilesModal({ open: true, section: s })}
                       >
                         <UploadCloud className="mr-2" size={16} />
                         Subir archivos
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        disabled={!canManage(me)}
+                        disabled={!canManage(profile?.role)}
                         onClick={() => setEditModal({ open: true, section: s })}
                       >
                         <Pencil className="mr-2" size={16} />
                         Editar apartado
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        disabled={!canManage(me)}
+                        disabled={!canManage(profile?.role)}
                         onClick={() => {
                           if (confirm("¿Eliminar este apartado y todos sus archivos?")) {
                             deleteSection(s.id);
@@ -219,7 +220,7 @@ export default function KBPage() {
 
               <FilesList
                 files={s.files || []}
-                canManage={canManage(me)}
+                canManage={canManage(profile?.role)}
                 onDelete={(fileId) => removeFileFromSection(s, fileId)}
               />
             </CardContent>

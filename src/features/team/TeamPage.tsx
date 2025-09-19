@@ -2,7 +2,9 @@
 
 import React, { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { getUsers, getCurrentUser } from "@/lib/users";
+import { getUsers } from "@/lib/users";
+import { useSessionUser } from "@/lib/auth/useSessionUser";
+import { useProfile } from "@/lib/auth/useProfile";
 import { repo, LS_KEYS } from "@/lib/storage";
 import type { Activity, Policy } from "@/lib/types";
 import {
@@ -82,7 +84,8 @@ function inRange(iso: string | undefined, range: { start: Date; end: Date }) {
 }
 
 export default function TeamPage() {
-  const me = getCurrentUser();
+  const session = useSessionUser();
+  const { profile: me } = useProfile(session?.id);
   const USERS = getUsers();
   const allActs = ActivitiesRepo.list();
   const allPols = PoliciesRepo.list();
