@@ -74,6 +74,7 @@ function ClientsPage() {
   const [sortBy, setSortBy] = useState<"created" | "name" | "status" | "contact">("created");
   const [invert, setInvert] = useState(false);
   const [openNew, setOpenNew] = useState(false);
+  const [flash, setFlash] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const [openEdit, setOpenEdit] = useState<{ open: boolean; client: Client | null }>({ open: false, client: null });
 
   // Carga inicial desde Supabase (si está configurado)
@@ -138,17 +139,21 @@ function ClientsPage() {
 
   // Crear/Actualizar/Borrar
   const handleCreate = async (c: Client) => {
-    if (!current) return;
+    if (!current) { setFlash({ type: 'err', msg: 'Sesión inválida' }); return; }
     const withMeta: Client = {
       ...c,
       ownerId: current.id,
       createdAt: c.createdAt || new Date().toISOString(),
     };
     if (withMeta.contactado && !withMeta.contactado_fecha) withMeta.contactado_fecha = new Date();
-    const saved = await upsertRemoteClient(withMeta);
-    if (saved) {
+    try {
+      const saved = await upsertRemoteClient(withMeta);
+      if (!saved) throw new Error('No se pudo guardar');
       setRows(prev => [saved, ...prev]);
       setOpenNew(false);
+      setFlash({ type: 'ok', msg: 'Cliente guardado' });
+    } catch (e:any) {
+      setFlash({ type: 'err', msg: e?.message || 'Error al guardar' });
     }
   };
 
@@ -234,6 +239,9 @@ function ClientsPage() {
           )}
           {loadError && !loading && (
             <div className="p-4 text-sm text-red-600">{loadError}</div>
+          )}
+          {flash && (
+            <div className={"p-3 text-sm " + (flash.type === 'ok' ? 'text-emerald-700' : 'text-rose-700')}>{flash.msg}</div>
           )}
           <table className="w-full text-sm">
             <thead className="bg-neutral-100 text-neutral-700">

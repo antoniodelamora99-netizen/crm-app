@@ -8,6 +8,7 @@ export type Profile = {
   role: 'asesor' | 'gerente' | 'promotor' | 'admin';
   manager_id?: string | null;
   promoter_id?: string | null;
+  username?: string | null;
 };
 
 export function useProfile(userId?: string | null) {
@@ -17,9 +18,9 @@ export function useProfile(userId?: string | null) {
 
   async function fetchProfile(id: string) {
     const sb = supabaseBrowser();
-    const { data, error } = await sb
-      .from('profiles')
-      .select('id, name:display_name, role, manager_id, promoter_id')
+      const { data, error } = await sb
+        .from('profiles')
+        .select('id, name:display_name, role, manager_id, promoter_id, username')
       .eq('id', id)
       .single();
     if (error) throw error;

@@ -32,7 +32,7 @@ export default function AccountPage() {
     if (!profile) return;
     setForm({
       name: profile.name || '',
-      username: '', // se carga desde DB si existe (no la traemos en hook; puede llegar como vacío)
+      username: (profile as any).username || '',
       role: (profile.role as any) || '',
       manager_id: (profile as any).manager_id ?? null,
       promoter_id: (profile as any).promoter_id ?? null,
@@ -117,6 +117,14 @@ export default function AccountPage() {
                   const json = await res.json();
                   if (!res.ok) throw new Error(json?.error || 'No se pudo guardar');
                   setMsg('Guardado');
+                  // Fuerza refresco del perfil para reflejar rol/nombre/username
+                  try {
+                    // El hook useProfile re-fetch con focus; aquí hacemos un refetch activo
+                    await new Promise(r => setTimeout(r, 200));
+                    if (typeof window !== 'undefined') {
+                      window.dispatchEvent(new Event('focus'));
+                    }
+                  } catch {}
                 } catch (e:any) {
                   setErr(e?.message || 'Error al guardar');
                 } finally { setSaving(false) }
