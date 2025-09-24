@@ -1,157 +1,181 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
+
+import React, { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 
 import type { Goal } from "@/lib/types";
 import { uid } from "@/lib/types";
-import { repo, LS_KEYS } from "@/lib/storage";
-import { getCurrentUser, filterByScope } from "@/lib/users";
+import { useSessionUser } from "@/lib/auth/useSessionUser";
+import { useGoals } from "@/features/goals/hooks/useGoals";
 
-// Goal con ownerId para persistencia local
-interface GoalExtended extends Goal { ownerId: string }
-const GoalsRepo = repo<GoalExtended>(LS_KEYS.goals);
+const GOAL_TYPES = [
+  "Ingreso mensual",
+  "Pólizas mensuales",
+  "Citas semanales",
+  "Referidos",
+] as const;
+
+type GoalType = (typeof GOAL_TYPES)[number];
 
 function monthToday() {
-  return new Date().toISOString().slice(0, 7); // YYYY-MM
+  return new Date().toISOString().slice(0, 7);
 }
 
 export default function GoalsPage() {
-  const [rows, setRows] = useState<GoalExtended[]>(GoalsRepo.list());
+  const sessionUser = useSessionUser();
+  const {
+    goals,
+    loading,
+    error,
+    upsert,
+    remove,
+  } = useGoals();
+
   const [q, setQ] = useState("");
   const [openNew, setOpenNew] = useState(false);
-  const [openEdit, setOpenEdit] = useState<{ open: boolean; goal: GoalExtended | null }>({ open: false, goal: null });
-  const me = getCurrentUser();
-
-  // persist
-  useEffect(() => {
-    GoalsRepo.saveAll(rows);
-  }, [rows]);
-
-  const scoped = useMemo<GoalExtended[]>(() => {
-    if (!me) return [];
-    return filterByScope<GoalExtended>(rows, me, (g) => g.ownerId);
-  }, [rows, me]);
+  const [openEdit, setOpenEdit] = useState<{ open: boolean; goal: Goal | null }>({ open: false, goal: null });
+  const [savingNew, setSavingNew] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
-    if (!term) return scoped;
-    return scoped.filter((g) => `${g.tipo} ${g.mes}`.toLowerCase().includes(term));
-  }, [scoped, q]);
+    const base = [...goals].sort((a, b) => (b.mes || "").localeCompare(a.mes || ""));
+    if (!term) return base;
+    return base.filter((g) => `${g.tipo} ${g.mes}`.toLowerCase().includes(term));
+  }, [goals, q]);
 
-  const canCreate = Boolean(me); // anyone logged in can create their own goals
-  const canEdit = (g: GoalExtended) => !!me && g.ownerId === me.id;
-
-  const handleCreate = (g: Goal) => {
-    if (!me) return;
-    const extended: GoalExtended = { ...g, ownerId: me.id };
-    setRows([extended, ...rows]);
-    setOpenNew(false);
+  const handleCreate = async (goal: Goal) => {
+    if (!sessionUser?.id) return;
+    const payload: Goal = {
+      ...goal,
+      ownerId: sessionUser.id,
+      createdAt: goal.createdAt || new Date().toISOString(),
+    };
+    setSavingNew(true);
+    try {
+      await upsert(payload);
+      setOpenNew(false);
+    } finally {
+      setSavingNew(false);
+    }
   };
 
-  const handleUpdate = (g: GoalExtended) => {
-    setRows((prev) => prev.map((x) => (x.id === g.id ? g : x)));
+  const handleUpdate = async (goal: Goal) => {
+    const existing = goals.find((g) => g.id === goal.id);
+    const payload: Goal = {
+      ...goal,
+      ownerId: existing?.ownerId || goal.ownerId,
+      createdAt: existing?.createdAt || goal.createdAt,
+    };
+    setSavingEdit(true);
+    try {
+      await upsert(payload);
+      setOpenEdit({ open: false, goal: null });
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    await remove(id);
     setOpenEdit({ open: false, goal: null });
   };
 
-  const handleDelete = (id: string) => {
-    setRows((prev) => prev.filter((x) => x.id !== id));
-    setOpenEdit({ open: false, goal: null });
-  };
+  if (!sessionUser) {
+    return <div className="p-6 text-sm text-neutral-500">Inicia sesión para gestionar metas.</div>;
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-xl font-semibold">Metas</h2>
-        <div className="flex gap-2 items-center">
+        <div className="flex items-center gap-2">
           <Input
             placeholder="Buscar por tipo o mes (YYYY-MM)…"
             value={q}
-            onChange={(e) => setQ((e.target as HTMLInputElement).value)}
+            onChange={(e) => setQ(e.currentTarget.value)}
             className="w-64"
           />
-          {canCreate && (
-            <Dialog open={openNew} onOpenChange={setOpenNew}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="mr-2" size={16} /> Nueva
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Nueva meta</DialogTitle>
-                </DialogHeader>
-                <GoalForm onSubmit={handleCreate} />
-              </DialogContent>
-            </Dialog>
-          )}
+          <Dialog open={openNew} onOpenChange={setOpenNew}>
+            <DialogTrigger asChild>
+              <Button disabled={loading}><Plus className="mr-2" size={16} /> Nueva</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Nueva meta</DialogTitle>
+              </DialogHeader>
+              <GoalForm onSubmit={handleCreate} submitting={savingNew} />
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
-        {filtered.map((g) => (
-          <Card key={g.id} className="shadow">
-            <CardContent className="p-5 space-y-2">
+      {error && (
+        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {loading && (
+          <Card className="shadow">
+            <CardContent className="p-5 text-sm text-neutral-500">Cargando metas…</CardContent>
+          </Card>
+        )}
+
+        {!loading && filtered.map((goal) => (
+          <Card key={goal.id} className="shadow">
+            <CardContent className="space-y-2 p-5">
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="text-sm text-muted-foreground">{g.tipo}</div>
-                  <div className="text-xl font-semibold">{g.mes}</div>
+                  <div className="text-sm text-muted-foreground">{goal.tipo}</div>
+                  <div className="text-xl font-semibold">{goal.mes}</div>
                 </div>
-                {canEdit(g) && (
-                  <Button size="sm" variant="secondary" onClick={() => setOpenEdit({ open: true, goal: g })}>
-                    <Pencil className="mr-2" size={14} /> Editar
-                  </Button>
-                )}
+                <Button size="sm" variant="secondary" onClick={() => setOpenEdit({ open: true, goal })}>
+                  <Pencil className="mr-2" size={14} /> Editar
+                </Button>
               </div>
-              {typeof g.metaMensual === "number" && (
+              {typeof goal.metaMensual === "number" && (
                 <div className="text-sm">
-                  Meta mensual: <b>{g.metaMensual}</b>
+                  Meta mensual: <b>{goal.metaMensual.toLocaleString("es-MX")}</b>
+                </div>
+              )}
+              {typeof goal.metaAnual === "number" && (
+                <div className="text-xs text-neutral-500">
+                  Meta anual: {goal.metaAnual.toLocaleString("es-MX")}
                 </div>
               )}
             </CardContent>
           </Card>
         ))}
-        {filtered.length === 0 && (
-          <div className="text-sm text-muted-foreground">Sin metas en tu alcance.</div>
+
+        {!loading && filtered.length === 0 && (
+          <div className="text-sm text-muted-foreground">Sin metas registradas.</div>
         )}
       </div>
 
-      <Dialog
-        open={openEdit.open}
-        onOpenChange={(o) => setOpenEdit({ open: o, goal: o ? openEdit.goal : null })}
-      >
+      <Dialog open={openEdit.open} onOpenChange={(o) => setOpenEdit({ open: o, goal: o ? openEdit.goal : null })}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Editar meta</DialogTitle>
           </DialogHeader>
           {openEdit.goal && (
-            <GoalForm initial={openEdit.goal} onSubmit={(g) => handleUpdate(g as GoalExtended)} />
+            <GoalForm initial={openEdit.goal} onSubmit={handleUpdate} submitting={savingEdit} />
           )}
-          {openEdit.goal && canEdit(openEdit.goal) && (
-            <DialogFooter className="justify-between mt-2">
+          {openEdit.goal && (
+            <DialogFooter className="mt-2 justify-between">
               <Button
                 variant="destructive"
+                disabled={savingEdit}
                 onClick={() => {
-                  if (window.confirm("¿Eliminar esta meta permanentemente?")) {
-                    if (openEdit.goal) handleDelete(openEdit.goal.id);
+                  if (openEdit.goal && window.confirm("¿Eliminar esta meta permanentemente?")) {
+                    handleDelete(openEdit.goal.id);
                   }
                 }}
               >
@@ -165,61 +189,63 @@ export default function GoalsPage() {
   );
 }
 
-const GOAL_TYPES = [
-  "Ingreso mensual",
-  "Pólizas mensuales",
-  "Citas semanales",
-  "Referidos"
-] as const;
-type GoalType = typeof GOAL_TYPES[number];
+type GoalFormProps = {
+  initial?: Goal | null;
+  onSubmit: (goal: Goal) => Promise<void> | void;
+  submitting: boolean;
+};
 
-type GoalFormShape = Goal & { ownerId?: string } & { tipo: GoalType };
-
-function GoalForm({ initial, onSubmit }: { initial?: GoalFormShape | null; onSubmit: (g: GoalFormShape) => void }) {
-  const [form, setForm] = useState<GoalFormShape>(
-    (initial as GoalFormShape) || { id: uid(), tipo: "Ingreso mensual", mes: monthToday(), metaMensual: 100000 }
+function GoalForm({ initial, onSubmit, submitting }: GoalFormProps) {
+  const [form, setForm] = useState<Goal>(
+    initial || {
+      id: uid(),
+      tipo: "Ingreso mensual",
+      mes: monthToday(),
+      metaMensual: 100000,
+      metaAnual: undefined,
+    }
   );
-  useEffect(() => {
+
+  React.useEffect(() => {
     if (initial) setForm(initial);
   }, [initial]);
-  const set = <K extends keyof GoalFormShape>(k: K, v: GoalFormShape[K]) =>
-    setForm(prev => ({ ...prev, [k]: v }));
+
+  const set = <K extends keyof Goal>(key: K, value: Goal[K]) => setForm((prev) => ({ ...prev, [key]: value }));
   const isEdit = Boolean(initial);
 
   return (
     <div className="grid grid-cols-2 gap-3">
       <Field label="Tipo">
-  <Select value={form.tipo} onValueChange={(v) => set("tipo", v as GoalType)}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
+        <Select value={form.tipo as GoalType} onValueChange={(v) => set("tipo", v as Goal["tipo"]) }>
+          <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            {GOAL_TYPES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
+            {GOAL_TYPES.map((type) => (
+              <SelectItem key={type} value={type}>{type}</SelectItem>
             ))}
           </SelectContent>
         </Select>
       </Field>
       <Field label="Mes">
-        <Input
-          type="month"
-          value={form.mes}
-          onChange={(e) => set("mes", (e.target as HTMLInputElement).value)}
-        />
+        <Input type="month" value={form.mes || ""} onChange={(e) => set("mes", e.currentTarget.value)} />
       </Field>
       <Field label="Meta mensual">
         <Input
           type="number"
           value={form.metaMensual ?? ""}
-          onChange={(e) => set("metaMensual", Number((e.target as HTMLInputElement).value) || 0)}
+          onChange={(e) => set("metaMensual", e.currentTarget.value ? Number(e.currentTarget.value) : undefined)}
         />
       </Field>
-
-      <DialogFooter className="col-span-2 mt-2">
-        <Button className="w-full" onClick={() => onSubmit(form)}>
-          {isEdit ? "Actualizar meta" : "Guardar meta"}
+      <Field label="Meta anual">
+        <Input
+          type="number"
+          value={form.metaAnual ?? ""}
+          onChange={(e) => set("metaAnual", e.currentTarget.value ? Number(e.currentTarget.value) : undefined)}
+        />
+      </Field>
+      <DialogFooter className="col-span-2 mt-2 flex items-center justify-between">
+        <div />
+              <Button disabled={submitting} onClick={() => onSubmit(form)}>
+          {submitting ? 'Guardando…' : isEdit ? 'Actualizar meta' : 'Guardar meta'}
         </Button>
       </DialogFooter>
     </div>
