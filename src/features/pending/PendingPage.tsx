@@ -1,9 +1,13 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Client, Activity, Policy, User } from "@/lib/types";
 import { repo, LS_KEYS } from "@/lib/storage";
 import { getCurrentUser, filterByScope } from "@/lib/users";
+// Diagnóstico Supabase
+import { useSessionUser } from "@/lib/auth/useSessionUser";
+import { useProfile } from "@/lib/auth/useProfile";
+import { listRemoteClients } from "@/lib/data/clients";
 
 // ======== Tipos (tablero Kanban) ========
 export type ColumnKey = "new" | "quote" | "follow" | "issued";
@@ -46,6 +50,23 @@ function inferPipeline(c: Client, acts: Activity[], pols: Policy[]): PipelineSta
 
 export default function PendingPage() {
   const me = getCurrentUser() as User;
+  // Estado de diagnóstico Supabase (no altera la lógica existente de la página)
+  const sess = useSessionUser();
+  const { profile } = useProfile(sess?.id);
+  const [remoteCount, setRemoteCount] = useState<number | null>(null);
+  const [remoteErr, setRemoteErr] = useState<string | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const rows = await listRemoteClients();
+        if (mounted) setRemoteCount(rows.length);
+      } catch (e: any) {
+        if (mounted) setRemoteErr(e?.message || "Error consultando clients");
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
   // Tick para forzar relectura de repos tras mover/editar
   const [tick, setTick] = useState(0);
   // Cargamos datos del usuario en alcance (reactivos al tick)
@@ -294,6 +315,28 @@ export default function PendingPage() {
 
   return (
     <div className="space-y-3">
+      {/* Panel de diagnóstico de sesión/perfil/acceso a Supabase */}
+      <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-700">
+        <div className="flex flex-wrap gap-3">
+          <div>
+            <span className="font-semibold">Sesión:</span>
+            <span className="ml-1">{sess ? `${sess.id.slice(0,8)}…` : "no iniciada"}</span>
+          </div>
+          <div>
+            <span className="font-semibold">Perfil:</span>
+            <span className="ml-1">{profile ? `${profile.role.toUpperCase()} (${profile.name ?? "sin nombre"})` : "cargando / no disponible"}</span>
+          </div>
+          <div>
+            <span className="font-semibold">Clientes remotos:</span>
+            <span className="ml-1">{remoteErr ? `error: ${remoteErr}` : (remoteCount ?? "…")}</span>
+          </div>
+          <div>
+            <span className="font-semibold">Modo datos:</span>
+            <span className="ml-1">Clientes locales (tablero) + Actividades/Pólizas locales</span>
+          </div>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Pendientes</h2>
         <div className="text-xs text-neutral-500">* Este tablero refleja clientes reales y su etapa del embudo.</div>

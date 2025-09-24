@@ -1,0 +1,68 @@
+{
+  "tech_stack": [
+    "TypeScript",
+    "Next.js 15 (App Router)",
+    "React 19",
+    "Tailwind CSS 4",
+    "Supabase (Auth, PostgREST, Realtime)",
+    "Zod"
+  ],
+  "features": [
+    {
+      "name": "App Shell & Layout",
+      "description": "Global layout, sidebar with role/name from Supabase profile, routes for dashboard, clients, users, goals, etc.",
+      "files": [
+        "src/app/layout.tsx",
+        "src/app/page.tsx",
+        "src/app/globals.css"
+      ]
+    },
+    {
+      "name": "UI Components",
+      "description": "Shadcn-style UI primitives used across features.",
+      "files": [
+        "src/components/ui/button.tsx",
+        "src/components/ui/card.tsx",
+        "src/components/ui/dialog.tsx",
+        "src/components/ui/input.tsx",
+        "src/components/ui/label.tsx",
+        "src/components/ui/select.tsx",
+        "src/components/ui/textarea.tsx",
+        "src/components/ui/badge.tsx"
+      ]
+    },
+    {
+      "name": "Features Pages",
+      "description": "Domain pages for CRM sections.",
+      "files": [
+        "src/features/dashboard/Dashboard.tsx",
+        "src/features/clients/ClientsPage.tsx",
+        "src/features/users/UsersPage.tsx",
+        "src/features/goals/GoalsPage.tsx",
+        "src/features/activities/ActivitiesPage.tsx",
+        "src/features/medical/MedicalPage.tsx",
+        "src/features/policies/PoliciesPage.tsx",
+        "src/features/kb/KBPage.tsx"
+      ]
+    },
+    {
+      "name": "Common UI & Utils",
+      "description": "Shared UI wrappers and helpers.",
+      "files": [
+        "src/features/common/ui.tsx",
+        "src/lib/utils.ts",
+        "src/lib/types.ts"
+      ]
+    },
+    {
+      "name": "Data Access",
+      "description": "Supabase repositories and helpers for profiles, clients, and general repos.",
+      "files": [
+        "src/lib/repos.ts",
+        "src/lib/storage.ts",
+        "src/lib/users.ts",
+        "src/lib/types.ts"
+      ]
+    }
+  ]
+}
