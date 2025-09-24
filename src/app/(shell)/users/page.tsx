@@ -31,7 +31,10 @@ export default function UsersPage() {
         const data = await listProfiles();
         if (alive) setRows(data);
       } catch (e: any) {
-        if (alive) setErr(e?.message ?? 'No se pudo cargar usuarios');
+        if (alive) {
+          setErr(e?.message ?? 'No se pudo cargar usuarios');
+          setRows([]);
+        }
       }
     })();
     return () => { alive = false };
@@ -57,17 +60,29 @@ export default function UsersPage() {
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
     if (!term) return rows;
-    return rows.filter(u =>
-      [u.name, u.email, u.role].some(v => String(v || "").toLowerCase().includes(term))
-    );
+    return rows.filter(u => {
+      const hay = [u.name, u.email, u.role, ...(u.roles || [])].filter(Boolean).map(String);
+      return hay.some(v => v.toLowerCase().includes(term));
+    });
   }, [q, rows]);
 
-  const roleBadge: Record<ProfileRow['role'], string> = {
+  const roleBadge: Record<'asesor' | 'gerente' | 'promotor' | 'admin', string> = {
     asesor: "bg-sky-100 text-sky-800",
     gerente: "bg-amber-100 text-amber-800",
     promotor: "bg-emerald-100 text-emerald-800",
     admin: "bg-violet-100 text-violet-800",
   };
+
+  const managers = useMemo(
+    () => (rows || []).filter(r => r.role === 'gerente' || r.roles?.includes('gerente')),
+    [rows]
+  );
+  const promoters = useMemo(
+    () => (rows || []).filter(r => r.role === 'promotor' || r.roles?.includes('promotor')),
+    [rows]
+  );
+
+  const displayRole = (u: ProfileRow) => u.role || u.roles?.[0] || 'asesor';
 
   return (
     <div className="space-y-3">
@@ -97,7 +112,7 @@ export default function UsersPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700">Rol</label>
-                    <Select value={form.role} onValueChange={(v)=>setForm(f=>({ ...f, role: v as ProfileRow['role'] }))}>
+                    <Select value={form.role || 'asesor'} onValueChange={(v)=>setForm(f=>({ ...f, role: v as ProfileRow['role'] }))}>
                       <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
                       <SelectContent>
                         {(
@@ -117,8 +132,8 @@ export default function UsersPage() {
                       <Select value={form.promoter_id || ''} onValueChange={(v)=>setForm(f=>({ ...f, promoter_id: v || null }))}>
                         <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
                         <SelectContent>
-                          {(rows || []).filter(r=>r.role==='promotor').map(p => (
-                            <SelectItem key={p.id} value={p.id}>{p.name || p.id}</SelectItem>
+                          {promoters.map(p => (
+                            <SelectItem key={p.id} value={p.id}>{p.name || p.email || p.id}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -128,8 +143,8 @@ export default function UsersPage() {
                       <Select value={form.manager_id || ''} onValueChange={(v)=>setForm(f=>({ ...f, manager_id: v || null }))}>
                         <SelectTrigger><SelectValue placeholder="Selecciona"/></SelectTrigger>
                         <SelectContent>
-                          {(rows || []).filter(r=>r.role==='gerente').map(g => (
-                            <SelectItem key={g.id} value={g.id}>{g.name || g.id}</SelectItem>
+                          {managers.map(g => (
+                            <SelectItem key={g.id} value={g.id}>{g.name || g.email || g.id}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -214,7 +229,10 @@ export default function UsersPage() {
                   <tr key={u.id} className="border-t">
                     <td className="p-3">{u.name || '—'}</td>
                     <td className="p-3">{u.email || '—'}</td>
-                    <td className="p-3"><Badge className={roleBadge[u.role]}>{u.role}</Badge></td>
+                {(() => {
+                  const role = displayRole(u);
+                  return <td className="p-3"><Badge className={roleBadge[role]}>{role}</Badge></td>;
+                })()}
                     <td className="p-3">{manager?.name || '—'}</td>
                     <td className="p-3">{promoter?.name || '—'}</td>
                     <td className="p-3 text-xs text-neutral-500">{u.id}</td>

@@ -9,7 +9,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { Plus } from "lucide-react";
 
 import type { Client, Policy } from "@/lib/types";
-import { uid } from "@/lib/types";
 import { useSessionUser } from "@/lib/auth/useSessionUser";
 import { useProfile } from "@/lib/auth/useProfile";
 import { useClients } from "@/features/clients/hooks/useClients";

@@ -86,7 +86,22 @@ export function useProfile(userId?: string | null) {
       .select(PROFILE_SELECT)
       .eq('id', id)
       .maybeSingle<ProfileRow>();
-    if (error) throw error;
+    if (error) {
+      const fallback = await sb
+        .from('profiles')
+        .select('id, email, display_name, username, role, manager_id, promoter_id, created_at')
+        .eq('id', id)
+        .maybeSingle();
+      if (fallback.error) throw fallback.error;
+      if (!fallback.data) return null;
+      return mapRow({
+        ...fallback.data,
+        user_roles: null,
+        active_role: null,
+        legacy_role: (fallback.data as any).role,
+        active_role_id: null,
+      } as ProfileRow);
+    }
     if (!data) return null;
     return mapRow(data);
   }

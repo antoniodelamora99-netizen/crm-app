@@ -19,25 +19,59 @@ export async function POST(req: Request) {
     if (meErr || !meData?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const meId = meData.user.id
 
-    const { data: meProfile } = await sb.from('profiles').select('id, role, promoter_id').eq('id', meId).single()
+  const { data: meProfile } = await sb
+    .from('profiles')
+    .select('id, role, promoter_id, active_role_id')
+    .eq('id', meId)
+    .single()
 
     const body = (await req.json()) as Partial<Body>
     const updates: Record<string, any> = {}
     if (typeof body.name === 'string' || body.name === null) updates.display_name = body.name
     if (typeof body.username === 'string' || body.username === null) updates.username = body.username
 
-    if (body.role) {
-      // Cambiar rol: solo admin puede cambiar a cualquier rol. Promotor puede cambiar a promotor/gerente/asesor. Gerente a asesor/gerente.
+    let activeRoleId: string | null | undefined = undefined
+    if (typeof body.role !== 'undefined') {
       const target = body.role
-      if (meProfile?.role === 'admin') {
+      if (target) {
+        if (meProfile?.role === 'admin') {
+          // admin puede todo
+        } else if (meProfile?.role === 'promotor') {
+          if (!['asesor', 'gerente', 'promotor'].includes(target)) {
+            return NextResponse.json({ error: 'No permitido' }, { status: 403 })
+          }
+        } else if (meProfile?.role === 'gerente') {
+          if (!['asesor', 'gerente'].includes(target)) {
+            return NextResponse.json({ error: 'No permitido' }, { status: 403 })
+          }
+        } else {
+          return NextResponse.json({ error: 'No permitido' }, { status: 403 })
+        }
+
+        const { data: roleRow, error: roleErr } = await sb
+          .from('roles')
+          .select('id, slug')
+          .eq('slug', target)
+          .maybeSingle()
+        if (roleErr || !roleRow) {
+          return NextResponse.json({ error: 'Rol no encontrado' }, { status: 400 })
+        }
+        activeRoleId = roleRow.id
         updates.role = target
-      } else if (meProfile?.role === 'promotor') {
-        if (['asesor','gerente','promotor'].includes(target)) updates.role = target; else return NextResponse.json({ error: 'No permitido' }, { status: 403 })
-      } else if (meProfile?.role === 'gerente') {
-        if (['asesor','gerente'].includes(target)) updates.role = target; else return NextResponse.json({ error: 'No permitido' }, { status: 403 })
+        updates.active_role_id = roleRow.id
+        await sb
+          .from('user_roles')
+          .upsert({ user_id: meId, role_id: roleRow.id }, { onConflict: 'user_id,role_id' })
+          .select('user_id')
+          .maybeSingle()
       } else {
-        // Asesor no puede cambiar su rol
-        return NextResponse.json({ error: 'No permitido' }, { status: 403 })
+        // Se envió null explícito: quitar rol activo
+        if (meProfile?.role !== 'admin') {
+          return NextResponse.json({ error: 'No permitido' }, { status: 403 })
+        }
+        updates.role = null
+        updates.active_role_id = null
+        activeRoleId = null
       }
     }
 
@@ -68,7 +102,9 @@ export async function POST(req: Request) {
       }
     }
 
-    if (Object.keys(updates).length === 0) return NextResponse.json({ ok: true })
+    if (Object.keys(updates).length === 0 && typeof activeRoleId === 'undefined') {
+      return NextResponse.json({ ok: true })
+    }
 
     const { data, error } = await sb
       .from('profiles')

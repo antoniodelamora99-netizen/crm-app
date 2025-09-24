@@ -260,9 +260,9 @@ create index if not exists idx_goals_owner on public.goals(owner_id);
 create index if not exists idx_goals_mes on public.goals(mes);
 
 create table if not exists public.medical_forms (
-  id text primary key,
+  id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users (id) on delete cascade,
-  cliente_id text not null references public.clients(id) on delete cascade,
+  cliente_id uuid not null references public.clients(id) on delete cascade,
   fecha date not null,
   enfermedades text,
   hospitalizacion text,

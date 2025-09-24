@@ -33,14 +33,20 @@ export default function AccountPage() {
     setForm({
       name: profile.name || '',
       username: (profile as any).username || '',
-      role: (profile.role as any) || '',
+      role: ((profile.activeRole || profile.role) as ProfileRow['role']) ?? 'asesor',
       manager_id: (profile as any).manager_id ?? null,
       promoter_id: (profile as any).promoter_id ?? null,
     });
   }, [profile]);
 
-  const promoters = useMemo(() => (rows || []).filter(r => r.role === 'promotor'), [rows]);
-  const managers = useMemo(() => (rows || []).filter(r => r.role === 'gerente'), [rows]);
+  const promoters = useMemo(
+    () => (rows || []).filter(r => r.role === 'promotor' || r.roles?.includes('promotor')),
+    [rows]
+  );
+  const managers = useMemo(
+    () => (rows || []).filter(r => r.role === 'gerente' || r.roles?.includes('gerente')),
+    [rows]
+  );
 
   const isAdmin = profile?.role === 'admin';
 
