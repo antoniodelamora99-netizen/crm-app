@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,16 +18,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { FileText, Plus, MoreVertical, UploadCloud, Trash2, Pencil } from "lucide-react";
 
-import { repo, LS_KEYS } from "@/lib/storage";
 import { useSessionUser } from "@/lib/auth/useSessionUser";
 import { useProfile } from "@/lib/auth/useProfile";
-import type { KBSection, KBFile, User } from "@/lib/types";
+import type { KBSection, KBFile } from "@/lib/types";
 import { uid } from "@/lib/types";
-
-// ================================
-// Repo
-// ================================
-const KBRepo = repo<KBSection>(LS_KEYS.kb);
+import { useKB } from "@/features/kb/hooks/useKB";
 
 // ================================
 // Permisos
@@ -42,7 +37,7 @@ function canManage(role?: string | null) {
 export default function KBPage() {
   const session = useSessionUser();
   const { profile } = useProfile(session?.id);
-  const [sections, setSections] = useState<KBSection[]>([]);
+  const { sections, loading, error, upsert, remove, addFiles, removeFile } = useKB();
   const [q, setQ] = useState("");
   const [openNew, setOpenNew] = useState(false);
   const [editModal, setEditModal] = useState<{ open: boolean; section: KBSection | null }>({
@@ -53,14 +48,6 @@ export default function KBPage() {
     open: false,
     section: null,
   });
-
-  useEffect(() => {
-    setSections(KBRepo.list());
-  }, []);
-
-  useEffect(() => {
-    KBRepo.saveAll(sections);
-  }, [sections]);
 
   const filtered = useMemo(() => {
     if (!q) return sections;
@@ -73,30 +60,25 @@ export default function KBPage() {
     );
   }, [sections, q]);
 
-  // CRUD Sección
-  const createSection = (data: Pick<KBSection, "title" | "description">) => {
+  // CRUD Sección (remote)
+  const createSection = async (data: Pick<KBSection, "title" | "description">) => {
     const s: KBSection = {
       id: uid(),
       title: data.title.trim(),
       description: (data.description || "").trim(),
       files: [],
-  ownerId: profile?.id,
+      ownerId: profile?.id,
     };
-    setSections((prev) => [s, ...prev]);
+    await upsert(s);
   };
 
-  const updateSection = (sec: KBSection) => {
-    setSections((prev) => prev.map((s) => (s.id === sec.id ? sec : s)));
-  };
+  const updateSection = async (sec: KBSection) => { await upsert(sec); };
+  const deleteSection = async (id: string) => { await remove(id); };
 
-  const deleteSection = (id: string) => {
-    setSections((prev) => prev.filter((s) => s.id !== id));
-  };
-
-  // Archivos
+  // Archivos (remote)
   const addFilesToSection = async (sec: KBSection, fileList: FileList) => {
     const arr = Array.from(fileList);
-    const dataUrls = await Promise.all(
+    const localFiles: KBFile[] = await Promise.all(
       arr.map(
         (f) =>
           new Promise<KBFile>((resolve, reject) => {
@@ -116,13 +98,11 @@ export default function KBPage() {
           })
       )
     );
-    const next: KBSection = { ...sec, files: [...(sec.files || []), ...dataUrls] };
-    updateSection(next);
+    await addFiles(sec.id, localFiles);
   };
 
-  const removeFileFromSection = (sec: KBSection, fileId: string) => {
-    const next: KBSection = { ...sec, files: (sec.files || []).filter((f) => f.id !== fileId) };
-    updateSection(next);
+  const removeFileFromSection = async (sec: KBSection, fileId: string) => {
+    await removeFile(fileId);
   };
 
   return (
@@ -154,8 +134,8 @@ export default function KBPage() {
                   <DialogTitle>Nuevo apartado</DialogTitle>
                 </DialogHeader>
                 <SectionForm
-                  onSubmit={(data) => {
-                    createSection(data);
+                  onSubmit={async (data) => {
+                    await createSection(data);
                     setOpenNew(false);
                   }}
                 />
@@ -218,15 +198,18 @@ export default function KBPage() {
                 </div>
               </div>
 
-              <FilesList
-                files={s.files || []}
-                canManage={canManage(profile?.role)}
-                onDelete={(fileId) => removeFileFromSection(s, fileId)}
-              />
+                <FilesList
+                  files={s.files || []}
+                  canManage={canManage(profile?.role)}
+                  onDelete={(fileId) => removeFileFromSection(s, fileId)}
+                />
             </CardContent>
           </Card>
         ))}
-        {filtered.length === 0 && (
+        {loading && (
+          <div className="text-sm text-neutral-500">Cargando…</div>
+        )}
+        {!loading && filtered.length === 0 && (
           <div className="text-sm text-muted-foreground">No hay apartados para mostrar.</div>
         )}
       </div>
@@ -241,13 +224,13 @@ export default function KBPage() {
             <DialogTitle>Editar apartado</DialogTitle>
           </DialogHeader>
           {editModal.section && (
-            <SectionForm
-              initial={editModal.section}
-              onSubmit={(data) => {
-                updateSection({ ...editModal.section!, ...data });
-                setEditModal({ open: false, section: null });
-              }}
-            />
+                <SectionForm
+                  initial={editModal.section}
+                  onSubmit={async (data) => {
+                    await updateSection({ ...editModal.section!, ...data });
+                    setEditModal({ open: false, section: null });
+                  }}
+                />
           )}
         </DialogContent>
       </Dialog>
@@ -263,8 +246,8 @@ export default function KBPage() {
           </DialogHeader>
           {filesModal.section && (
             <UploadBox
-              onFiles={(fl) => {
-                addFilesToSection(filesModal.section!, fl);
+              onFiles={async (fl) => {
+                await addFilesToSection(filesModal.section!, fl);
                 setFilesModal({ open: false, section: null });
               }}
             />
