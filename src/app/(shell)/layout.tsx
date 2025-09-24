@@ -3,10 +3,8 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { getCurrentUser } from '@/lib/users'
 import { APP_VERSION } from '@/lib/version'
 import { BUILD_COMMIT_SHORT, BUILD_DATE_ISO } from '@/lib/buildMeta'
-import { LS_KEYS } from '@/lib/storage'
 import { useSessionUser } from '@/lib/auth/useSessionUser'
 import { useProfile } from '@/lib/auth/useProfile'
 import { supabaseBrowser } from '@/lib/supabase/browser'
@@ -43,24 +41,12 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   const { profile, loading: profileLoading } = useProfile(sessionUser?.id)
   // Espera a que Supabase inicialice y responda getSession() para evitar redirecciones tempranas
   const [sbChecked, setSbChecked] = useState(false)
-  const [localUser, setLocalUser] = useState<{ id: string; role: Role; name: string } | null>(null)
-  const [localChecked, setLocalChecked] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false) // mobile overlay nav
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false) // desktop collapse
   // refs para gestos táctiles
   const touchRef = useRef<{ startX: number; startY: number; opening: boolean; closing: boolean; active: boolean }>({ startX:0, startY:0, opening:false, closing:false, active:false })
   const router = useRouter()
   const pathname = usePathname()
-
-  // Carga usuario local (demo) como fallback si no hay sesión de Supabase
-  useEffect(() => {
-    try {
-      const u = getCurrentUser()
-      if (u) setLocalUser({ id: u.id, role: u.role as Role, name: u.name })
-    } finally {
-      setLocalChecked(true)
-    }
-  }, [])
 
   // Marca cuando Supabase ya resolvió el estado de sesión en el cliente
   useEffect(() => {
@@ -81,15 +67,15 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
 
   // Redirige a /login si no hay ni sesión Supabase ni usuario local demo
   useEffect(() => {
-    if (!localChecked || !sbChecked) return
-    if (!sessionUser && !localUser) {
+    if (!sbChecked) return
+    if (!sessionUser) {
       router.replace('/login')
     }
-  }, [sessionUser, localUser, localChecked, sbChecked, router])
+  }, [sessionUser, sbChecked, router])
 
   // Derive role flags (keep outside of render branching to preserve hook order)
-  const effectiveRole: Role | undefined = (profile?.role as Role) || localUser?.role
-  const displayName: string | undefined = profile?.name || localUser?.name
+  const effectiveRole: Role | undefined = profile?.role ? (profile.role as Role) : undefined
+  const displayName: string | undefined = profile?.name || profile?.email || undefined
   // Siempre mostrar las pestañas de Clientes, Asesores y Usuarios en la barra lateral
   // La visibilidad/alcance de datos queda protegida por RLS y lógica interna de cada página.
 
@@ -116,7 +102,6 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   // Subtle logout (no big red button)
   const logout = async () => {
     try { await supabaseBrowser().auth.signOut() } catch {}
-    try { localStorage.removeItem(LS_KEYS.currentUser) } catch {}
     router.replace('/login')
   }
 
@@ -162,7 +147,7 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   const hasMountedRef = useRef(false)
   useEffect(() => { hasMountedRef.current = true }, [])
 
-  const loadingUser = (!sessionUser && (!localChecked || !sbChecked)) || (Boolean(sessionUser) && profileLoading);
+  const loadingUser = (!sessionUser && !sbChecked) || (Boolean(sessionUser) && profileLoading);
 
   // Formatea fecha de build en UTC de forma determinista (YYYY-MM-DD HH:MM UTC)
   function formatBuildDateUTC(iso: string): string {

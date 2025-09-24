@@ -9,8 +9,9 @@
     "start": "next start",
     "lint": "next lint",
     "clean": "rm -rf .next",
-  "dev:clean": "rm -rf .next && next dev --turbopack",
-  "link-supabase": "supabase link --project-ref vpmlgxlmrfpwdsxddfsg"
+    "dev:clean": "rm -rf .next && next dev --turbopack",
+    "link-supabase": "supabase link --project-ref vpmlgxlmrfpwdsxddfsg",
+    "seed:promotor": "node --env-file=.env.local scripts/seed-promotor.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

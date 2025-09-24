@@ -28,6 +28,7 @@ export function clientToDB(c: Client) {
     anf_fecha: c.anfFecha ?? null,
     created_at: c.createdAt ?? new Date().toISOString(),
     contactado: c.contactado ?? false,
+    pipeline: c.pipeline ?? null,
     contactado_fecha: c.contactado
       ? (c.contactado_fecha instanceof Date
           ? c.contactado_fecha.toISOString()
@@ -63,6 +64,7 @@ export function clientFromDB(row: any): Client { // eslint-disable-line @typescr
     createdAt: row.created_at || undefined,
     contactado: row.contactado ?? false,
     contactado_fecha: row.contactado_fecha || undefined,
+    pipeline: row.pipeline || undefined,
   };
 }
 

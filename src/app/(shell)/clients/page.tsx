@@ -27,7 +27,7 @@ import { Plus, ArrowUpDown } from "lucide-react";
 import type { Client, Policy } from "@/lib/types";
 import { uid } from "@/lib/types";
 import { useSessionUser } from "@/lib/auth/useSessionUser";
-import { listRemoteClients, upsertRemoteClient, deleteRemoteClient, toggleRemoteContactado } from "@/lib/data/clients";
+import { useClients } from "@/features/clients/hooks/useClients";
 
 
 // Helpers
@@ -66,10 +66,14 @@ function fmtPhone(v?: string) {
 function ClientsPage() {
   const current = useSessionUser();
   const allowContactToggle = Boolean(current); // RLS protege escritura; habilita si hay sesión
-  const [rows, setRows] = useState<Client[]>([]);
-  const [source, setSource] = useState<'remote' | 'local'>('remote');
-  const [loading, setLoading] = useState<boolean>(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const {
+    clients: rows,
+    loading,
+    error: loadError,
+    upsert,
+    remove,
+    toggleContactado: toggleContactadoRemote,
+  } = useClients();
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<"created" | "name" | "status" | "contact">("created");
   const [invert, setInvert] = useState(false);
@@ -78,25 +82,6 @@ function ClientsPage() {
   const [openEdit, setOpenEdit] = useState<{ open: boolean; client: Client | null }>({ open: false, client: null });
 
   // Carga inicial desde Supabase (si está configurado)
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      setLoading(true);
-      setLoadError(null);
-      try {
-        const remote = await listRemoteClients();
-        if (!active) return;
-        setRows(remote || []);
-        setSource('remote');
-      } catch (e) {
-        setLoadError("No se pudo cargar clientes remotos");
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => { active = false; };
-  }, []);
-
   // Alcance: lo limita Supabase RLS; aquí no filtramos nada.
   const scoped = rows;
 
@@ -147,9 +132,8 @@ function ClientsPage() {
     };
     if (withMeta.contactado && !withMeta.contactado_fecha) withMeta.contactado_fecha = new Date();
     try {
-      const saved = await upsertRemoteClient(withMeta);
+      const saved = await upsert(withMeta);
       if (!saved) throw new Error('No se pudo guardar');
-      setRows(prev => [saved, ...prev]);
       setOpenNew(false);
       setFlash({ type: 'ok', msg: 'Cliente guardado' });
     } catch (e:any) {
@@ -169,17 +153,15 @@ function ClientsPage() {
         merged.contactado_fecha = c.contactado ? new Date() : null;
       }
     }
-    const saved = await upsertRemoteClient(merged);
+    const saved = await upsert(merged);
     if (saved) {
-      setRows(prev => prev.map(x => x.id === saved.id ? saved : x));
       setOpenEdit({ open: false, client: null });
     }
   };
 
   const handleDelete = async (id: string) => {
-    const ok = await deleteRemoteClient(id);
+    const ok = await remove(id);
     if (ok) {
-      setRows(prev => prev.filter(x => x.id !== id));
       setOpenEdit({ open: false, client: null });
     }
   };
@@ -187,8 +169,7 @@ function ClientsPage() {
   const toggleContactado = async (id: string, val: boolean) => {
     const target = rows.find(r => r.id === id);
     if (!target) return;
-    const saved = await toggleRemoteContactado(target, val);
-    if (saved) setRows(prev => prev.map(x => x.id === id ? saved : x));
+    await toggleContactadoRemote(target, val);
   };
 
   return (

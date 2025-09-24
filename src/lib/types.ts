@@ -45,6 +45,7 @@ export type Client = {
   // Contacto quick flag + fecha
   contactado?: boolean;
   contactado_fecha?: string | Date | null; // ISO string or Date when marked contactado
+  pipeline?: 'new' | 'quote' | 'follow' | 'issued';
 };
 
 export type Policy = {

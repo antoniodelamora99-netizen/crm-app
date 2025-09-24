@@ -26,7 +26,15 @@ const policySchema = z.object({
   createdAt: z.string().optional(),
 });
 
-export function PolicyForm({ clients, initial, onSubmit }: { clients: Client[]; initial?: Policy; onSubmit: (p: Policy) => void; }) {
+export function PolicyForm({
+  clients,
+  initial,
+  onSubmit,
+}: {
+  clients: Client[];
+  initial?: Policy;
+  onSubmit: (p: Policy) => Promise<void | Policy> | void;
+}) {
   const [form, setForm] = useState<Policy>(initial || {
     id: uid(),
     clienteId: clients[0]?.id || "",
@@ -54,12 +62,16 @@ export function PolicyForm({ clients, initial, onSubmit }: { clients: Client[]; 
     return false;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setTouched({ clienteId: true, plan: true, estado: true, primaMensual: true });
     const ok = validate(form);
     if (!ok) return;
     setSubmitting(true);
-    try { onSubmit(form); } finally { setSubmitting(false); }
+    try {
+      await onSubmit(form);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const showError = (field: string) => (touched[field] && errors[field]) ? (

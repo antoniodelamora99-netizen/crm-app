@@ -2,7 +2,15 @@
 import React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { Client, Policy, User } from "@/lib/types";
+import type { Client, Policy } from "@/lib/types";
+
+type ProfileLite = {
+  id: string;
+  name: string | null;
+  role: string | null;
+  manager_id: string | null;
+  promoter_id: string | null;
+};
 
 const policyStatusClass: Record<Policy["estado"], string> = {
   Vigente: "bg-emerald-100 text-emerald-800",
@@ -14,18 +22,24 @@ const policyStatusClass: Record<Policy["estado"], string> = {
 export function PoliciesTable({
   policies,
   clients,
-  users,
+  profiles,
   role,
   allowEdit,
   onEdit,
 }: {
   policies: Policy[];
   clients: Client[];
-  users: User[];
+  profiles: ProfileLite[];
   role: string;
   allowEdit: boolean;
   onEdit: (p: Policy) => void;
 }) {
+  const profileName = (id?: string | null) => {
+    if (!id) return '-';
+    const prof = profiles.find((p) => p.id === id);
+    return prof?.name || '-';
+  };
+
   return (
     <table className="w-full text-sm">
       <thead className="bg-neutral-100 text-neutral-700">
@@ -46,9 +60,10 @@ export function PoliciesTable({
       <tbody>
         {policies.map((r) => {
           const c = clients.find((x) => x.id === r.clienteId);
-          const advisor = users.find((u) => u.id === r.ownerId);
+          const advisor = profiles.find((p) => p.id === r.ownerId);
           const clienteNombre = `${c?.nombre ?? "-"} ${c?.apellidoPaterno ?? ""}`.trim();
-          const asesorNombre = advisor?.name || "-";
+          const asesorNombre = advisor?.name || '-';
+          const managerNombre = advisor?.manager_id ? profileName(advisor.manager_id) : advisor?.promoter_id ? profileName(advisor.promoter_id) : '—';
           return (
             <tr key={r.id} className="border-t">
               <td className="p-3">{clienteNombre || "-"}</td>
@@ -60,7 +75,7 @@ export function PoliciesTable({
               <td className="p-3">{r.fechaPago || "-"}</td>
               <td className="p-3">{r.fechaEntrega || "-"}</td>
               {role !== "asesor" && <td className="p-3">{asesorNombre}</td>}
-              {role !== "asesor" && <td className="p-3">—</td>}
+              {role !== "asesor" && <td className="p-3">{managerNombre}</td>}
               {allowEdit && (
                 <td className="p-3 space-x-2">
                   <Button variant="secondary" size="sm" onClick={() => onEdit(r)}>Editar</Button>
