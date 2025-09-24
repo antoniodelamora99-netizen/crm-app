@@ -109,6 +109,7 @@ export type MedicalForm = {
   otros?: string;
   pdfUrl?: string;
   ownerId?: string;
+  createdAt?: string;
 };
 
 export type KBFile = {
